@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { DuplicatePair } from '@/types';
@@ -46,7 +47,9 @@ export function InteractiveDataGrid({ data, onReviewPair, onUpdatePairStatus }: 
     <Card className="shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">Potential Duplicates Review</CardTitle>
-        <p className="text-sm text-muted-foreground">Review the list of potential duplicates identified by the system.</p>
+        <p className="text-sm text-muted-foreground">
+          Found {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}. Review the list identified by the system.
+        </p>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto rounded-md border">
