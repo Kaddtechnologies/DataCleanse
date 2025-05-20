@@ -33,6 +33,14 @@ export type AnalyzeDuplicateConfidenceOutput = z.infer<
   typeof AnalyzeDuplicateConfidenceOutputSchema
 >;
 
+// Schema for the data structured specifically for the prompt
+const AnalyzeDuplicateConfidencePromptInputSchema = z.object({
+  record1String: z.string().describe('The first record to compare, as a JSON string.'),
+  record2String: z.string().describe('The second record to compare, as a JSON string.'),
+  fuzzyScore: z.number().describe('The fuzzy matching score between the two records.'),
+});
+
+
 export async function analyzeDuplicateConfidence(
   input: AnalyzeDuplicateConfidenceInput
 ): Promise<AnalyzeDuplicateConfidenceOutput> {
@@ -41,14 +49,14 @@ export async function analyzeDuplicateConfidence(
 
 const prompt = ai.definePrompt({
   name: 'analyzeDuplicateConfidencePrompt',
-  input: {schema: AnalyzeDuplicateConfidenceInputSchema},
+  input: {schema: AnalyzeDuplicateConfidencePromptInputSchema}, // Use the prompt-specific input schema
   output: {schema: AnalyzeDuplicateConfidenceOutputSchema},
   prompt: `You are an AI assistant that analyzes potential duplicate records and suggests a confidence level for the match.
 
   Given two records and their fuzzy matching score, determine a confidence level (High, Medium, or Low) and provide a brief reasoning.
 
-  Record 1: {{{JSON.stringify record1}}}
-  Record 2: {{{JSON.stringify record2}}}
+  Record 1: {{{record1String}}}
+  Record 2: {{{record2String}}}
   Fuzzy Matching Score: {{{fuzzyScore}}}
 
   Consider factors like the similarity of names, addresses, and other key fields when determining the confidence level.
@@ -60,12 +68,18 @@ const prompt = ai.definePrompt({
 const analyzeDuplicateConfidenceFlow = ai.defineFlow(
   {
     name: 'analyzeDuplicateConfidenceFlow',
-    inputSchema: AnalyzeDuplicateConfidenceInputSchema,
+    inputSchema: AnalyzeDuplicateConfidenceInputSchema, // Flow's public input schema
     outputSchema: AnalyzeDuplicateConfidenceOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
+  async (flowInput: AnalyzeDuplicateConfidenceInput) => {
+    // Prepare the input for the prompt by stringifying the records
+    const promptInput = {
+      record1String: JSON.stringify(flowInput.record1),
+      record2String: JSON.stringify(flowInput.record2),
+      fuzzyScore: flowInput.fuzzyScore,
+    };
+    
+    const {output} = await prompt(promptInput); // Pass the transformed input to the prompt
     return output!;
   }
 );
-
