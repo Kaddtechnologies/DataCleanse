@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -8,8 +9,10 @@ import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from 'lucide-react';
+import { Loader2, BrainCircuit } from 'lucide-react';
 import { analyzeDuplicateConfidence, type AnalyzeDuplicateConfidenceOutput } from '@/ai/flows/analyze-duplicate-confidence';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 // Mock data for demonstration
 const mockDuplicateDataRaw: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>[] = [
@@ -54,33 +57,43 @@ export default function HomePage() {
   const [selectedPairForReview, setSelectedPairForReview] = useState<DuplicatePair | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const { toast } = useToast();
+  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
-  const fetchAiAnalysisForPair = async (pair: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>): Promise<Partial<DuplicatePair>> => {
-    if (pair.similarityScore < 0.9 && pair.similarityScore > 0.6) { // Only run AI for borderline cases for demo
-      try {
-        const aiResult = await analyzeDuplicateConfidence({
-          record1: transformRecordForAI(pair.record1),
-          record2: transformRecordForAI(pair.record2),
-          fuzzyScore: pair.similarityScore,
-        });
-        return { aiConfidence: aiResult.confidenceLevel, aiReasoning: aiResult.reasoning };
-      } catch (error) {
-        console.error(`AI analysis failed for pair ${pair.id}:`, error);
-        return { aiConfidence: 'Error', aiReasoning: 'AI analysis failed.' };
-      }
+  const fetchAiAnalysisForPair = async (pairInput: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>): Promise<Partial<DuplicatePair>> => {
+    // Decide if AI analysis should run (e.g., based on score or if not already analyzed)
+    // For this version, we'll run it if aiConfidence is not 'Error' or if it's a borderline case
+    // The original logic to run only for borderline for demo can be kept or adjusted.
+    // if (pairInput.similarityScore < 0.9 && pairInput.similarityScore > 0.6) { // Original condition
+    try {
+      const aiResult = await analyzeDuplicateConfidence({
+        record1: transformRecordForAI(pairInput.record1),
+        record2: transformRecordForAI(pairInput.record2),
+        fuzzyScore: pairInput.similarityScore,
+      });
+      return { aiConfidence: aiResult.confidenceLevel, aiReasoning: aiResult.reasoning };
+    } catch (error) {
+      console.error(`AI analysis failed for pair ${pairInput.id}:`, error);
+      // Return an error state for this specific pair
+      return { aiConfidence: 'Error', aiReasoning: 'AI analysis failed to retrieve a result.' };
     }
-    return {};
+    // }
+    // return {}; // Return empty if no AI analysis was run
   };
 
   const handleFileProcessed = async (file: File) => {
     toast({ title: "Processing File...", description: `Simulating data extraction and deduplication for ${file.name}.` });
     setIsLoadingData(true);
+    setSelectedRowIds(new Set()); // Clear selection on new file
     
-    // Simulate API call and AI analysis
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing time
 
     const processedDataPromises = mockDuplicateDataRaw.map(async (pair) => {
-      const aiData = await fetchAiAnalysisForPair(pair);
+      // Initial AI analysis for borderline cases (demo behavior)
+      let aiData: Partial<DuplicatePair> = {};
+      if (pair.similarityScore < 0.9 && pair.similarityScore > 0.6) {
+        aiData = await fetchAiAnalysisForPair(pair);
+      }
       return { ...pair, ...aiData, status: 'pending' as DuplicatePair['status'] };
     });
 
@@ -108,10 +121,77 @@ export default function HomePage() {
   };
   
   const handleExport = (format: 'csv' | 'excel') => {
-    // This is a mock export function
     console.log(`Exporting data to ${format}...`, duplicateData);
-    // In a real app, you'd generate and download the file here.
+    toast({title: "Export Initiated (Mock)", description: `Data will be prepared for ${format.toUpperCase()} download.`});
   };
+
+  const handleToggleRowSelection = (pairId: string) => {
+    setSelectedRowIds(prevSelected => {
+      const newSelected = new Set(prevSelected);
+      if (newSelected.has(pairId)) {
+        newSelected.delete(pairId);
+      } else {
+        newSelected.add(pairId);
+      }
+      return newSelected;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (duplicateData.length === 0) return;
+    if (selectedRowIds.size === duplicateData.length) {
+      setSelectedRowIds(new Set());
+    } else {
+      setSelectedRowIds(new Set(duplicateData.map(pair => pair.id)));
+    }
+  };
+
+  const handleBulkAiAnalyze = async () => {
+    if (selectedRowIds.size === 0) {
+      toast({ title: "No Rows Selected", description: "Please select rows to analyze.", variant: "destructive" });
+      return;
+    }
+
+    setIsBulkProcessing(true);
+    toast({ title: "Bulk AI Analysis Started", description: `Processing ${selectedRowIds.size} selected pair(s).` });
+
+    // Create a temporary array for updates to avoid multiple state updates in a loop
+    let updatedData = [...duplicateData];
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const pairId of selectedRowIds) {
+      const pairIndex = updatedData.findIndex(p => p.id === pairId);
+      if (pairIndex !== -1) {
+        const pairToAnalyze = updatedData[pairIndex];
+        // Destructure to match fetchAiAnalysisForPair's expected input
+        const { id, record1, record2, similarityScore } = pairToAnalyze;
+        const aiData = await fetchAiAnalysisForPair({ id, record1, record2, similarityScore });
+        
+        if (aiData.aiConfidence && aiData.aiConfidence !== 'Error') {
+          successCount++;
+        } else if (aiData.aiConfidence === 'Error') {
+          errorCount++;
+        }
+        updatedData[pairIndex] = { ...updatedData[pairIndex], ...aiData };
+      }
+    }
+
+    setDuplicateData(updatedData);
+    setIsBulkProcessing(false);
+    setSelectedRowIds(new Set()); 
+    
+    let summaryMessage = `Bulk analysis complete. ${successCount} pair(s) successfully analyzed.`;
+    if (errorCount > 0) {
+      summaryMessage += ` ${errorCount} pair(s) encountered errors.`;
+    }
+    toast({ 
+      title: "Bulk AI Analysis Finished", 
+      description: summaryMessage,
+      variant: errorCount > 0 ? "destructive" : "default"
+    });
+  };
+
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -132,15 +212,49 @@ export default function HomePage() {
 
         {!isLoadingData && duplicateData.length > 0 && (
           <>
+            <Card className="mb-6 shadow-md">
+              <CardHeader>
+                <CardTitle className="text-xl">Bulk AI Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap items-center gap-4">
+                  <Button
+                    onClick={handleBulkAiAnalyze}
+                    disabled={selectedRowIds.size === 0 || isBulkProcessing}
+                  >
+                    {isBulkProcessing ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <BrainCircuit className="mr-2 h-4 w-4" />
+                    )}
+                    {isBulkProcessing ? `Analyzing ${selectedRowIds.size} selected...` : `Analyze Selected (${selectedRowIds.size})`}
+                  </Button>
+                  {selectedRowIds.size > 0 && !isBulkProcessing && (
+                      <p className="text-sm text-muted-foreground">
+                          {selectedRowIds.size} {selectedRowIds.size === 1 ? 'pair' : 'pairs'} ready for AI analysis.
+                      </p>
+                  )}
+                  {selectedRowIds.size === 0 && !isBulkProcessing && (
+                      <p className="text-sm text-muted-foreground">
+                          Select rows in the table below to begin.
+                      </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <section aria-labelledby="duplicate-grid-heading">
               <h2 id="duplicate-grid-heading" className="sr-only">Duplicate Records Grid</h2>
               <InteractiveDataGrid 
                 data={duplicateData} 
                 onReviewPair={handleReviewPair}
-                onUpdatePairStatus={handleResolvePair} // Pass this if grid allows direct status updates
+                onUpdatePairStatus={handleResolvePair}
+                selectedRowIds={selectedRowIds}
+                onToggleRowSelection={handleToggleRowSelection}
+                onToggleSelectAll={handleToggleSelectAll}
               />
             </section>
-            <section aria-labelledby="export-actions-heading">
+            <section aria-labelledby="export-actions-heading" className="mt-8">
               <h2 id="export-actions-heading" className="sr-only">Export Actions</h2>
               <DataExportActions onExport={handleExport} hasData={duplicateData.length > 0} />
             </section>
@@ -168,3 +282,5 @@ export default function HomePage() {
     </div>
   );
 }
+
+    
