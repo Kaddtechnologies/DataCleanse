@@ -4,17 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
+import { exportToExcel, exportToCSV } from "@/utils/export-utils";
 
 interface DataExportActionsProps {
-  onExport: (format: 'csv' | 'excel') => void;
+  data: any[];
   hasData: boolean;
 }
 
-export function DataExportActions({ onExport, hasData }: DataExportActionsProps) {
+export function DataExportActions({ data, hasData }: DataExportActionsProps) {
   const { toast } = useToast();
 
   const handleExportClick = (format: 'csv' | 'excel') => {
-    if (!hasData) {
+    if (!hasData || !data || data.length === 0) {
       toast({
         title: "No Data to Export",
         description: "Please process a file first to generate data for export.",
@@ -22,11 +23,26 @@ export function DataExportActions({ onExport, hasData }: DataExportActionsProps)
       });
       return;
     }
-    onExport(format);
-    toast({
-      title: "Export Started (Mock)",
-      description: `Data export to ${format.toUpperCase()} has been initiated.`,
-    });
+
+    try {
+      if (format === 'excel') {
+        exportToExcel(data, 'processed-data');
+      } else {
+        exportToCSV(data, 'processed-data');
+      }
+
+      toast({
+        title: "Export Successful",
+        description: `Data has been exported to ${format.toUpperCase()} format.`,
+      });
+    } catch (error) {
+      console.error('Export error:', error);
+      toast({
+        title: "Export Failed",
+        description: "An error occurred while exporting the data.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
