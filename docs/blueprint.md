@@ -1,4 +1,4 @@
-# **App Name**: DataSift
+# **App Name**: DataCleanse
 
 ## Core Features:
 

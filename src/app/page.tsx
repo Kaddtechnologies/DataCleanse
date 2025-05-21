@@ -8,6 +8,7 @@ import { FileUpload } from '@/components/file-upload';
 import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
+import { AiAnalysisNotification } from '@/components/ai-analysis-display';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, BrainCircuit } from 'lucide-react';
 import { analyzeDuplicateConfidence, type AnalyzeDuplicateConfidenceOutput } from '@/ai/flows/analyze-duplicate-confidence';
@@ -54,27 +55,78 @@ export default function HomePage() {
     // return {}; // Return empty if no AI analysis was run
   };
 
-  const handleFileProcessed = async (file: File) => {
-    toast({ title: "Processing File...", description: `Simulating data extraction and deduplication for ${file.name}.` });
+  const handleFileProcessed = async (apiResponse: any) => {
     setIsLoadingData(true);
     setSelectedRowIds(new Set()); // Clear selection on new file
-    
-    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate processing time
 
-    const processedDataPromises = mockDuplicateDataRaw.map(async (pair) => {
-      // Initial AI analysis for borderline cases (demo behavior)
-      let aiData: Partial<DuplicatePair> = {};
-      if (pair.similarityScore < 0.9 && pair.similarityScore > 0.6) {
-        aiData = await fetchAiAnalysisForPair(pair);
-      }
-      return { ...pair, ...aiData, status: 'pending' as DuplicatePair['status'] };
-    });
+    try {
+      // Transform the API response into the format expected by the data grid
+      const duplicateGroups = apiResponse.results.duplicates.map((group: any) => {
+        const masterRecord = {
+          name: group.MasterName,
+          address: group.MasterAddress,
+          id: group.master_uid,
+          tpi: group.MasterTPI,
+          rowNumber: group.MasterRow,
+          city: group.MasterCity,
+          country: group.MasterCountry,
+          // Master record doesn't have individual scores
+          overall_score: group.AvgSimilarity,
+          isLowConfidence: group.IsLowConfidenceGroup
+        };
 
-    const fullyProcessedData = await Promise.all(processedDataPromises);
+        return group.Duplicates.map((duplicate: any) => ({
+          id: duplicate.uid,
+          record1: masterRecord,
+          record2: {
+            name: duplicate.Name,
+            address: duplicate.Address,
+            id: duplicate.uid,
+            tpi: duplicate.TPI,
+            rowNumber: duplicate.Row,
+            city: duplicate.City,
+            country: duplicate.Country,
+            
+            // Similarity scores
+            name_score: duplicate.Name_score,
+            addr_score: duplicate.Addr_score,
+            city_score: duplicate.City_score,
+            country_score: duplicate.Country_score,
+            tpi_score: duplicate.TPI_score,
+            overall_score: duplicate.Overall_score,
+            
+            // Match method information
+            blockType: duplicate.BlockType,
+            matchMethod: duplicate.MatchMethod,
+            bestNameMatchMethod: duplicate.BestNameMatchMethod,
+            bestAddrMatchMethod: duplicate.BestAddrMatchMethod,
+            
+            // Confidence information
+            isLowConfidence: duplicate.IsLowConfidence,
+            llm_conf: duplicate.LLM_conf
+          },
+          similarityScore: duplicate.Overall_score / 100,
+          aiConfidence: duplicate.IsLowConfidence ? 'low' : group.AvgSimilarity >= 98 ? 'high' : 'medium',
+          status: 'pending',
+        }));
+      }).flat();
 
-    setDuplicateData(fullyProcessedData);
-    setIsLoadingData(false);
-    toast({ title: "Deduplication Complete", description: "Potential duplicates are ready for review.", variant: "default" });
+      setDuplicateData(duplicateGroups);
+      toast({
+        title: "Deduplication Complete",
+        description: `Found ${apiResponse.results.stats.total_potential_duplicate_records} potential duplicates in ${apiResponse.results.stats.total_master_records_with_duplicates} groups.`,
+        variant: "default"
+      });
+    } catch (error) {
+      console.error('Error processing API response:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process deduplication results.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingData(false);
+    }
   };
 
   const handleReviewPair = (pair: DuplicatePair) => {
@@ -213,19 +265,23 @@ export default function HomePage() {
                       </p>
                   )}
                 </div>
+                <div className="mt-4">
+                <AiAnalysisNotification />
+              </div>
               </CardContent>
             </Card>
 
             <section aria-labelledby="duplicate-grid-heading">
               <h2 id="duplicate-grid-heading" className="sr-only">Duplicate Records Grid</h2>
-              <InteractiveDataGrid 
-                data={duplicateData} 
+              <InteractiveDataGrid
+                data={duplicateData}
                 onReviewPair={handleReviewPair}
                 onUpdatePairStatus={handleResolvePair}
                 selectedRowIds={selectedRowIds}
                 onToggleRowSelection={handleToggleRowSelection}
                 onToggleSelectAll={handleToggleSelectAll}
               />
+             
             </section>
             <section aria-labelledby="export-actions-heading" className="mt-8">
               <h2 id="export-actions-heading" className="sr-only">Export Actions</h2>
@@ -250,7 +306,7 @@ export default function HomePage() {
         />
       )}
        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-        © {new Date().getFullYear()} DataSift. All rights reserved.
+        © {new Date().getFullYear()} DataCleanse. All rights reserved.
       </footer>
     </div>
   );

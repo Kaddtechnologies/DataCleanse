@@ -96,13 +96,21 @@ body {
 
 /* Custom gradient classes */
 .bg-primary-gradient {
-  background-image: linear-gradient(to right, #E0F7FA, #4FC3F7);
+  background-image: linear-gradient(to right, #20160C, #090909);
 }
 
 .bg-secondary-gradient {
-  background-image: linear-gradient(to right, #7986CB, #9575CD);
+  background-image: linear-gradient(to right, #221305, #1D1204);
 }
 
 .bg-accent-gradient {
-  background-image: linear-gradient(to right, #F48FB1, #EC407A);
+  background-image: linear-gradient(to right, #FFC400, #FA7225, #DC3589);
+}
+
+.title-gradient {
+  background: linear-gradient(to bottom, #FA7225, #C14DD4);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
 }

@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 interface InteractiveDataGridProps {
   data: DuplicatePair[];
   onReviewPair: (pair: DuplicatePair) => void;
-  onUpdatePairStatus: (pairId: string, status: DuplicatePair['status']) => void;
+  onUpdatePairStatus: (pairId: string, status: Exclude<DuplicatePair['status'], 'pending'>) => void;
   selectedRowIds: Set<string>;
   onToggleRowSelection: (pairId: string) => void;
   onToggleSelectAll: () => void;
@@ -155,11 +155,27 @@ export function InteractiveDataGrid({
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{pair.record1.name}</div>
-                    <div className="text-xs text-muted-foreground">{pair.record1.email}</div>
+                    <div className="text-xs text-muted-foreground">{pair.record1.address}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {pair.record1.city && `${pair.record1.city}, ${pair.record1.country || ''}`}
+                      {!pair.record1.city && pair.record1.country}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {pair.record1.tpi && <span>TPI: {pair.record1.tpi}</span>}
+                      {pair.record1.rowNumber && <span> • Row: {pair.record1.rowNumber}</span>}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{pair.record2.name}</div>
-                    <div className="text-xs text-muted-foreground">{pair.record2.email}</div>
+                    <div className="text-xs text-muted-foreground">{pair.record2.address}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {pair.record2.city && `${pair.record2.city}, ${pair.record2.country || ''}`}
+                      {!pair.record2.city && pair.record2.country}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {pair.record2.tpi && <span>TPI: {pair.record2.tpi}</span>}
+                      {pair.record2.rowNumber && <span> • Row: {pair.record2.rowNumber}</span>}
+                    </div>
                   </TableCell>
                   <TableCell className="text-center">
                     <Badge variant={pair.similarityScore > 0.8 ? "default" : pair.similarityScore > 0.6 ? "secondary" : "destructive"}

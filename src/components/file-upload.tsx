@@ -1,8 +1,10 @@
 
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { UploadCloud, FileText, CheckCircle, ScanLine, ArrowRight } from 'lucide-react';
+import type { DragEvent, ChangeEvent } from 'react';
+import { type JSX, useState, useEffect, useCallback } from 'react';
+import { UploadCloud, FileText, CheckCircle, ScanLine, ArrowRight, Brain, Eye, Merge, Users, Loader2 } from 'lucide-react';
+import { LoadingOverlay } from '@/components/loading-overlay';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,13 +23,47 @@ const LOGICAL_FIELDS = [
   { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
 ];
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'; // Replace with your actual API base URL
+const API_BASE_URL = 'https://datacleansing.redocean-27211e6a.centralus.azurecontainerapps.io'; // Replace with your actual API base URL
+
+type DeduplicationKPIMetrics = {
+  auto_merge: number;
+  needs_review: number;
+  needs_ai: number;
+  total_blocks: number;
+};
+
+type DeduplicationStats = {
+  high_confidence_duplicates_groups: number;
+  medium_confidence_duplicates_groups: number;
+  low_confidence_duplicates_groups: number;
+  block_stats: {
+    total_blocks: number;
+    max_block_size: number;
+    avg_block_size: number;
+    records_in_blocks: number;
+  };
+  total_master_records_with_duplicates: number;
+  total_potential_duplicate_records: number;
+};
+
+type DeduplicationResults = {
+  duplicate_group_count: number;
+  total_potential_duplicates: number;
+  kpi_metrics: DeduplicationKPIMetrics;
+  stats: DeduplicationStats;
+};
+
+type DeduplicationResponse = {
+  message: string;
+  results: DeduplicationResults;
+  error: string | null;
+};
 
 interface FileUploadProps {
-  onFileProcessed: (file: File) => void;
+  onFileProcessed: (data: DeduplicationResponse) => void;
 }
 
-export function FileUpload({ onFileProcessed }: FileUploadProps) {
+export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -38,59 +74,15 @@ export function FileUpload({ onFileProcessed }: FileUploadProps) {
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deduplicationResults, setDeduplicationResults] = useState<any>(null); // Replace 'any' with your expected result type
-
-  const getCSVRowCount = (csvFile: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const text = e.target?.result as string;
-      if (text) {
-        // A simple line count. Might need adjustment for files with trailing newlines.
-        // Subtract 1 if there's a header row and you don't want to count it,
-        // but for total lines, this is generally okay.
-        const lines = text.split('\n').filter(line => line.trim() !== '').length;
-        setRowCount(lines);
-      }
-    };
-    reader.onerror = () => {
-      toast({ title: "Error Reading File", description: "Could not read file contents to count rows.", variant: "destructive" });
-      setRowCount(null);
-    };
-    reader.readAsText(csvFile);
-  };
-
-  const extractColumnHeaders = async (selectedFile: File) => {
-    try {
-      let headers: string[] = [];
-      if (selectedFile.name.toLowerCase().endsWith('.csv')) {
-        const text = await selectedFile.text();
-        const lines = text.split('\n');
-        if (lines.length > 0) {
-          headers = lines[0].split(',').map(header => header.trim());
-        }
-      } else if (selectedFile.name.toLowerCase().endsWith('.xlsx') || selectedFile.name.toLowerCase().endsWith('.xls')) {
-        const data = await readXlsxFile(selectedFile);
-        if (data.length > 0) {
-          headers = data[0].map((header: any) => String(header).trim());
-        }
-      }
-      setColumnHeaders(headers);
-      autoMapColumns(headers);
-    } catch (err) {
-      console.error("Error extracting headers:", err);
-      toast({ title: "Error", description: "Failed to extract column headers.", variant: "destructive" });
-      setColumnHeaders([]);
-      setColumnMap({});
-    }
-  };
+  const [deduplicationResults, setDeduplicationResults] = useState<DeduplicationResponse | null>(null);
 
   // Simple normalization function
-  const normalize = (text: string): string => {
+  const normalize = useCallback((text: string): string => {
     text = String(text).toLowerCase().trim();
     text = text.replace(/[^a-z0-9\s]/g, " ");
     text = text.replace(/\s+/g, " ");
     return text;
-  };
+  }, []);
 
   const CANDIDATE_MAP: Record<string, string[]> = {
     "customer_name": ["customer", "name", "account", "client"],
@@ -100,7 +92,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps) {
     "tpi": ["tpi", "id", "num", "number", "code"],
   };
 
-  const autoMapColumns = (headers: string[]) => {
+  const autoMapColumns = useCallback((headers: string[]) => {
     const detected: Record<string, string | undefined> = {};
     LOGICAL_FIELDS.forEach(field => detected[field.key] = undefined);
 
@@ -114,113 +106,264 @@ export function FileUpload({ onFileProcessed }: FileUploadProps) {
     });
 
     setColumnMap(detected as Record<string, string>);
-  };
+  }, [normalize]);
 
-  const handleFileSelection = async (selectedFile: File | null) => {
-    setFile(selectedFile);
- if (selectedFile) {
- await extractColumnHeaders(selectedFile);
- toast({ title: "File Selected", description: selectedFile.name });
-    } else { // File was removed
-      handleFileSelection(null);
-    }
-  };
-
-  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragging(false);
-    if (event.dataTransfer.files && event.dataTransfer.files[0]) {
-      handleFileSelection(event.dataTransfer.files[0]);
-      toast({ title: "File Selected", description: event.dataTransfer.files[0].name });
+  const getFileRowCount = useCallback(async (file: File) => {
+    try {
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        const text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+        const lines = text.split('\n').filter(line => line.trim() !== '').length;
+        setRowCount(lines);
+      } else if (file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xls')) {
+        const data = await readXlsxFile(file);
+        setRowCount(data.length);
+      }
+    } catch (err) {
+      console.error("Error counting rows:", err);
+      toast({ title: "Error Reading File", description: "Could not read file contents to count rows.", variant: "destructive" });
+      setRowCount(null);
     }
   }, [toast]);
 
-  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    setIsDragging(true);
+  const extractColumnHeaders = useCallback(async (selectedFile: File) => {
+    try {
+      let headers: string[] = [];
+      
+      if (selectedFile.name.toLowerCase().endsWith('.csv')) {
+        const text = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsText(selectedFile);
+        });
+        
+        const lines = text.split('\n');
+        if (lines.length > 0) {
+          headers = lines[0].split(',').map(header => header.trim());
+        }
+      } else if (selectedFile.name.toLowerCase().endsWith('.xlsx') || selectedFile.name.toLowerCase().endsWith('.xls')) {
+        const data = await readXlsxFile(selectedFile);
+        if (data.length > 0) {
+          headers = data[0].map(header => String(header).trim());
+        }
+      }
+      
+      setColumnHeaders(headers);
+      autoMapColumns(headers);
+    } catch (err) {
+      console.error("Error extracting headers:", err);
+      toast({ title: "Error", description: "Failed to extract column headers.", variant: "destructive" });
+      setColumnHeaders([]);
+      setColumnMap({});
+    }
+  }, [toast, autoMapColumns]);
+
+  const resetState = useCallback(() => {
+    setColumnHeaders([]);
+    setColumnMap({});
+    setRowCount(null);
+    setDeduplicationResults(null);
   }, []);
 
-  const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+  const handleFileSelection = useCallback(async (selectedFile: File | null) => {
+    setFile(selectedFile);
+    if (selectedFile) {
+      await extractColumnHeaders(selectedFile);
+      await getFileRowCount(selectedFile);
+      toast({ title: "File Selected", description: selectedFile.name });
+    } else {
+      resetState();
+      // When file is removed, call onFileProcessed with empty results to clear the table
+      onFileProcessed({
+        message: "",
+        results: {
+          duplicate_group_count: 0,
+          total_potential_duplicates: 0,
+          kpi_metrics: {
+            auto_merge: 0,
+            needs_review: 0,
+            needs_ai: 0,
+            total_blocks: 0
+          },
+          stats: {
+            high_confidence_duplicates_groups: 0,
+            medium_confidence_duplicates_groups: 0,
+            low_confidence_duplicates_groups: 0,
+            block_stats: {
+              total_blocks: 0,
+              max_block_size: 0,
+              avg_block_size: 0,
+              records_in_blocks: 0
+            },
+            total_master_records_with_duplicates: 0,
+            total_potential_duplicate_records: 0
+          }
+        },
+        error: null
+      });
+    }
+  }, [extractColumnHeaders, getFileRowCount, toast, resetState, onFileProcessed]);
+
+  const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
+    const droppedFile = event.dataTransfer.files[0];
+    if (droppedFile) {
+      void handleFileSelection(droppedFile);
+    }
+  }, [handleFileSelection, setIsDragging]);
+
+  const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(true);
+  }, [setIsDragging]);
+
+  const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  }, [setIsDragging]);
+
+  const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] || null;
+    void handleFileSelection(selectedFile);
+  }, [handleFileSelection]);
+
+  const convertCsvToUtf8 = useCallback(async (csvFile: File): Promise<File> => {
+    if (!csvFile.name.toLowerCase().endsWith('.csv')) {
+      return csvFile;
+    }
+
+    try {
+      const buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
+        reader.onerror = (e) => reject(new Error("Error reading file"));
+        reader.readAsArrayBuffer(csvFile);
+      });
+
+      let text: string;
+      try {
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        text = decoder.decode(buffer);
+      } catch (e) {
+        try {
+          const decoder = new TextDecoder('windows-1252');
+          text = decoder.decode(buffer);
+        } catch (e) {
+          const decoder = new TextDecoder('iso-8859-1');
+          text = decoder.decode(buffer);
+        }
+      }
+
+      const utf8Blob = new Blob([new TextEncoder().encode(text)], { type: 'text/csv;charset=utf-8' });
+      return new File([utf8Blob], csvFile.name, { type: 'text/csv;charset=utf-8' });
+    } catch (err) {
+      console.error("Error converting CSV to UTF-8:", err);
+      return csvFile;
+    }
   }, []);
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
- await handleFileSelection(event.target.files[0]);
-    } else {
- await handleFileSelection(null);
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+
+  const handleDeduplicate = useCallback(async () => {
+    if (!file || isLoading) return;
+
+    // Validate required fields
+    if (!columnMap.customer_name) {
+      toast({
+        title: "Error",
+        description: "Customer Name field mapping is required",
+        variant: "destructive"
+      });
+      return;
     }
-  };
 
-  const handleDeduplicate = async () => {
-    if (file) {
-      setIsLoading(true);
-      setError(null);
-      setDeduplicationResults(null);
+    setIsLoading(true);
+    setError(null);
+    setShowLoadingOverlay(true);
 
+    try {
+      // Process the file and prepare form data
+      const processedFile = await convertCsvToUtf8(file);
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', processedFile);
 
-      // Filter out unmapped fields (where value is empty string) before sending
-      const activeColumnMap: Record<string, string> = {};
-      for (const key in columnMap) {
-        if (columnMap[key]) { // Only include if a column is selected
-          activeColumnMap[key] = columnMap[key];
-        }
+      // Prepare column mapping data
+      const columnMapData = {
+        customer_name: columnMap.customer_name || null,
+        address: columnMap.address || null,
+        city: columnMap.city || null,
+        country: columnMap.country || null,
+        tpi: columnMap.tpi || null
+      };
+      formData.append('column_map_json', JSON.stringify(columnMapData));
+      formData.append('encoding', 'utf-8');
+
+      // Make API request
+      const response = await fetch(`${API_BASE_URL}/deduplicate/`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      // Handle response
+      const contentType = response.headers.get("content-type");
+      const responseData = contentType?.includes("application/json") 
+        ? await response.json()
+        : { error: await response.text() };
+
+      // Check for errors
+      if (!response.ok) {
+        throw new Error(responseData.error || responseData.detail || `Server error: ${response.status}`);
       }
-      formData.append('column_map_json', JSON.stringify(activeColumnMap));
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/deduplicate/`, {
-          method: 'POST',
-          body: formData,
-          // Headers are not typically needed for FormData, browser sets them
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || data.detail || `Server error: ${response.status}`);
-        }
-
-        if (data.error) {
-          setError(`Deduplication Error: ${data.message || data.error}`);
-          setDeduplicationResults(null);
-        } else {
-          setDeduplicationResults(data); // data should be DeduplicationResponse
-          onFileProcessed(data); // Pass results to parent
-        }
-
-      } catch (err: any) {
-        console.error("Deduplication API error:", err);
-        setError(`Failed to process deduplication: ${err.message}`);
-        setDeduplicationResults(null);
-      } finally {
-        setIsLoading(false);
+      if (responseData.error) {
+        throw new Error(responseData.message || responseData.error);
       }
+
+      // Update state with results
+      setDeduplicationResults(responseData);
+      onFileProcessed(responseData);
+    } catch (error) {
+      console.error("Deduplication API error:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process deduplication';
+      setError(errorMessage);
+      setDeduplicationResults(null);
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+      setShowLoadingOverlay(false);
     }
-  };
+  }, [file, isLoading, convertCsvToUtf8, columnMap, toast, onFileProcessed, setDeduplicationResults, setError, setIsLoading]);
 
   useEffect(() => {
     // Reset progress and row count if file is removed
-    const handleCleanup = () => 
-    {
     if (!file) {
       setUploadProgress(0);
       setIsProcessing(false);
       setRowCount(null);
-
-    // Clear column headers and map when file is removed
- setColumnHeaders([]); setColumnMap({}); setDeduplicationResults(null); setError(null);
+      setColumnHeaders([]);
+      setColumnMap({});
+      setDeduplicationResults(null);
+      setError(null);
     }
-    if (!file) { setColumnHeaders([]); setColumnMap({}); setDeduplicationResults(null); setError(null); }
+  }, [file]); // Add file as dependency
 
   return (
-    <Card className="shadow-lg">
+    <>
+      <LoadingOverlay isVisible={showLoadingOverlay} />
+      <Card className="shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">Upload Customer Data</CardTitle>
       </CardHeader>
@@ -245,7 +388,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps) {
               <FileText className="w-16 h-16 mx-auto text-green-600 mb-3" />
               <p className="font-medium text-green-700">{file.name}</p>
               <div className="text-sm text-muted-foreground">
-                ({(file.size / 1024).toFixed(2)} KB)
+                ({file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${(file.size / 1024).toFixed(2)} KB`})
                 {rowCount !== null && (
                   <span className="ml-2 flex items-center justify-center">
                     <ScanLine className="w-4 h-4 mr-1 text-muted-foreground" /> {rowCount} rows
@@ -278,15 +421,15 @@ export function FileUpload({ onFileProcessed }: FileUploadProps) {
                     {field.label} {field.required && <span className="text-destructive">*</span>}
                   </Label>
                   <Select
-                    onValueChange={(value) => setColumnMap({ ...columnMap, [field.key]: value })}
-                    value={columnMap[field.key] || ""}
+                    onValueChange={(value) => setColumnMap({ ...columnMap, [field.key]: value === "unmapped" ? "" : value })}
+                    value={columnMap[field.key] || "unmapped"}
                     disabled={isLoading}
                   >
                     <SelectTrigger id={field.key}>
                       <SelectValue placeholder="Select a column" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unmapped</SelectItem>
+                      <SelectItem value="unmapped">Unmapped</SelectItem>
                       {columnHeaders.map((header) => (
                         <SelectItem key={header} value={header}>
                           {header}
@@ -330,17 +473,65 @@ export function FileUpload({ onFileProcessed }: FileUploadProps) {
         )}
 
         {deduplicationResults && (
-          <div className="mt-4 p-4 border rounded-md bg-green-50 text-green-800">
-            <h4 className="font-semibold mb-2">Deduplication Results:</h4>
-            {/* Display a summary or trigger the display component */}
-            <p>Deduplication completed successfully. Found {deduplicationResults.potential_duplicates?.length || 0} potential duplicate groups.</p>
-            {/* You might want to call onFileProcessed here with the results */}
+          <div className="mt-4 space-y-4">
+            <h4 className="text-lg font-semibold">Deduplication Results</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">Auto Merge</p>
+                      <p className="text-2xl font-bold text-green-700">{deduplicationResults.results.kpi_metrics.auto_merge}</p>
+                    </div>
+                    <Merge className="h-8 w-8 text-green-500" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">High confidence matches (≥98%)</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-yellow-50 border-yellow-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">Needs Review</p>
+                      <p className="text-2xl font-bold text-yellow-700">{deduplicationResults.results.kpi_metrics.needs_review}</p>
+                    </div>
+                    <Eye className="h-8 w-8 text-yellow-500" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Medium confidence matches (90-97%)</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">Needs AI Analysis</p>
+                      <p className="text-2xl font-bold text-blue-700">{deduplicationResults.results.kpi_metrics.needs_ai}</p>
+                    </div>
+                    <Brain className="h-8 w-8 text-blue-500" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Low confidence matches (&lt;90%)</p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-purple-50 border-purple-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-muted-foreground">Total Duplicates</p>
+                      <p className="text-2xl font-bold text-purple-700">{deduplicationResults.results.total_potential_duplicates}</p>
+                    </div>
+                    <Users className="h-8 w-8 text-purple-500" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Total potential matches found</p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
       </CardContent>
     </Card>
+    </>
   );
-  }
- }
- ) // Return cleanup function or nothing if no cleanup needed
-} // Add file as a dependency
+}

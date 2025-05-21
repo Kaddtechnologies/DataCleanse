@@ -7,8 +7,8 @@ import { Toaster } from "@/components/ui/toaster";
 // No need to call it as a function or specify subsets here.
 
 export const metadata: Metadata = {
-  title: 'DataSift - Customer Deduplication',
-  description: 'Identify and manage duplicate customer records with DataSift.',
+  title: 'DataCleanse - Customer Deduplication',
+  description: 'Identify and manage duplicate customer records with DataCleanse.',
 };
 
 export default function RootLayout({
