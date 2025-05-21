@@ -7,7 +7,7 @@ export function AppHeader() {
         <div className="flex items-center space-x-3">
           <Waves className="h-8 w-8 text-white" />
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            DataSift
+            <span className="bg-gradient-to-b from-[#FA7225] to-[#C14DD4] text-transparent bg-clip-text">DataCleanse</span>
           </h1>
         </div>
         <p className="text-sm text-blue-100 mt-1">

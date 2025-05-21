@@ -3,10 +3,7 @@ import type { Config } from "tailwindcss";
 export default {
     darkMode: ["class"],
     content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+ "./src/**/*.{js,ts,jsx,tsx,mdx}",],
   theme: {
   	extend: {
   		colors: {
@@ -84,11 +81,24 @@ export default {
   				}
   			}
   		},
+  		linearGradientColors: ({ }) => ({
+  			'primary-gradient': [
+  				'#20160C',
+  				'#090909'
+  			],
+  			'secondary-gradient': [
+  				'#221305',
+  				'#1D1204'
+  			],
+  			'accent-gradient': ['#FFC400', '#FA7225', '#DC3589']
+
+  		,
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out'
   		}
-  	}
+	})
   },
   plugins: [require("tailwindcss-animate")],
-} satisfies Config;
+} satisfies Config
+}
