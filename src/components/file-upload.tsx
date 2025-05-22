@@ -13,6 +13,8 @@ import * as XLSX from 'xlsx';
 import readXlsxFile from 'read-excel-file';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Slider } from "@/components/ui/slider"
 
 // Define the logical fields the backend expects for mapping
 const LOGICAL_FIELDS = [
@@ -63,6 +65,30 @@ interface FileUploadProps {
   onFileProcessed: (data: DeduplicationResponse) => void;
 }
 
+// Define blocking strategies with descriptions
+const BLOCKING_STRATEGIES = [
+  {
+    id: 'use_prefix',
+    name: 'Prefix Blocking',
+    description: 'Groups records with the same beginning characters of names'
+  },
+  {
+    id: 'use_metaphone',
+    name: 'Metaphone',
+    description: 'Uses phonetic algorithm to match names that sound similar but spelled differently'
+  },
+  {
+    id: 'use_soundex',
+    name: 'Soundex',
+    description: 'Groups names with similar pronunciation regardless of spelling variations'
+  },
+  {
+    id: 'use_ngram',
+    name: 'N-Gram',
+    description: 'Matches text patterns by breaking names into character sequences'
+  }
+];
+
 export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -75,6 +101,58 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deduplicationResults, setDeduplicationResults] = useState<DeduplicationResponse | null>(null);
+  
+  // Blocking strategy configuration state
+  const [usePrefix, setUsePrefix] = useState(true);
+  const [useMetaphone, setUseMetaphone] = useState(false);
+  const [useSoundex, setUseSoundex] = useState(false);
+  const [useNgram, setUseNgram] = useState(false);
+  const [useAi, setUseAi] = useState(false);
+  const [nameThreshold, setNameThreshold] = useState(70);
+  const [overallThreshold, setOverallThreshold] = useState(70);
+  
+  // Processing time estimates per 100 records (in seconds)
+  const PROCESSING_TIMES = {
+    prefix: 0.54,
+    metaphone: 0.89,
+    soundex: 1.27,
+    ngram: 9.03,
+    ai: 53.16,
+    prefix_ai: 54,
+    all_ai: 61.41
+  };
+  
+  // Calculate estimated completion time based on selected strategies and dataset size
+  const calculateEstimatedTime = useCallback(() => {
+    if (!rowCount) return null;
+    
+    let timePerHundredRecords = 0;
+    
+    // Calculate base time based on selected blocking strategies
+    if (useAi) {
+      if (usePrefix && useMetaphone && useSoundex && useNgram) {
+        timePerHundredRecords = PROCESSING_TIMES.all_ai;
+      } else if (usePrefix) {
+        timePerHundredRecords = PROCESSING_TIMES.prefix_ai;
+      } else {
+        timePerHundredRecords = PROCESSING_TIMES.ai;
+      }
+    } else {
+      if (usePrefix) timePerHundredRecords += PROCESSING_TIMES.prefix;
+      if (useMetaphone) timePerHundredRecords += PROCESSING_TIMES.metaphone;
+      if (useSoundex) timePerHundredRecords += PROCESSING_TIMES.soundex;
+      if (useNgram) timePerHundredRecords += PROCESSING_TIMES.ngram;
+    }
+    
+    // Calculate total time in seconds
+    const totalTimeSeconds = (timePerHundredRecords * rowCount) / 100;
+    
+    // Convert to minutes and seconds
+    const minutes = Math.floor(totalTimeSeconds / 60);
+    const seconds = Math.round(totalTimeSeconds % 60);
+    
+    return { minutes, seconds, totalTimeSeconds };
+  }, [rowCount, usePrefix, useMetaphone, useSoundex, useNgram, useAi]);
 
   // Simple normalization function
   const normalize = useCallback((text: string): string => {
@@ -168,6 +246,14 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     setColumnMap({});
     setRowCount(null);
     setDeduplicationResults(null);
+    setUsePrefix(true);
+    setUseMetaphone(false);
+    setUseSoundex(false);
+    setUseNgram(false);
+    setUseAi(false);
+    setNameThreshold(70);
+    setOverallThreshold(70);
+    setEstimatedProcessingTime(null);
   }, []);
 
   const handleFileSelection = useCallback(async (selectedFile: File | null) => {
@@ -272,6 +358,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   }, []);
 
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [estimatedProcessingTime, setEstimatedProcessingTime] = useState<{ minutes: number; seconds: number; totalTimeSeconds: number } | null>(null);
 
   const handleDeduplicate = useCallback(async () => {
     if (!file || isLoading) return;
@@ -288,6 +375,10 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
 
     setIsLoading(true);
     setError(null);
+    
+    // Calculate and set estimated processing time
+    const estimatedTime = calculateEstimatedTime();
+    setEstimatedProcessingTime(estimatedTime);
     setShowLoadingOverlay(true);
 
     try {
@@ -306,6 +397,15 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       };
       formData.append('column_map_json', JSON.stringify(columnMapData));
       formData.append('encoding', 'utf-8');
+      
+      // Add blocking strategy configuration
+      formData.append('use_prefix', usePrefix.toString());
+      formData.append('use_metaphone', useMetaphone.toString());
+      formData.append('use_soundex', useSoundex.toString());
+      formData.append('use_ngram', useNgram.toString());
+      formData.append('use_ai', useAi.toString());
+      formData.append('name_threshold', nameThreshold.toString());
+      formData.append('overall_threshold', overallThreshold.toString());
 
       // Make API request
       const response = await fetch(`${API_BASE_URL}/deduplicate/`, {
@@ -345,7 +445,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       setIsLoading(false);
       setShowLoadingOverlay(false);
     }
-  }, [file, isLoading, convertCsvToUtf8, columnMap, toast, onFileProcessed, setDeduplicationResults, setError, setIsLoading]);
+  }, [file, isLoading, convertCsvToUtf8, columnMap, toast, onFileProcessed, setDeduplicationResults, setError, setIsLoading, calculateEstimatedTime]);
 
   useEffect(() => {
     // Reset progress and row count if file is removed
@@ -357,12 +457,20 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       setColumnMap({});
       setDeduplicationResults(null);
       setError(null);
+      setUsePrefix(true);
+      setUseMetaphone(false);
+      setUseSoundex(false);
+      setUseNgram(false);
+      setUseAi(false);
+      setNameThreshold(70);
+      setOverallThreshold(70);
+      setEstimatedProcessingTime(null);
     }
   }, [file]); // Add file as dependency
 
   return (
     <>
-      <LoadingOverlay isVisible={showLoadingOverlay} />
+      <LoadingOverlay isVisible={showLoadingOverlay} estimatedTime={estimatedProcessingTime} />
       <Card className="shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">Upload Customer Data</CardTitle>
@@ -410,6 +518,152 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
             </>
           )}
         </div>
+
+        {columnHeaders.length > 0 && (
+          <div className="space-y-4 mb-6">
+            <h3 className="text-lg font-semibold">Blocking Strategy Configuration</h3>
+            <div className="flex flex-col space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {BLOCKING_STRATEGIES.map((strategy) => (
+                  <div key={strategy.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`strategy-${strategy.id}`}
+                      checked={
+                        strategy.id === 'use_prefix' ? usePrefix :
+                        strategy.id === 'use_metaphone' ? useMetaphone :
+                        strategy.id === 'use_soundex' ? useSoundex :
+                        strategy.id === 'use_ngram' ? useNgram : false
+                      }
+                      onCheckedChange={(checked: boolean | "indeterminate") => {
+                        if (strategy.id === 'use_prefix') setUsePrefix(!!checked);
+                        else if (strategy.id === 'use_metaphone') setUseMetaphone(!!checked);
+                        else if (strategy.id === 'use_soundex') setUseSoundex(!!checked);
+                        else if (strategy.id === 'use_ngram') setUseNgram(!!checked);
+                      }}
+                    />
+                    <label
+                      htmlFor={`strategy-${strategy.id}`}
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      {strategy.name}
+                    </label>
+                  </div>
+                ))}
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="use-ai"
+                    checked={useAi}
+                    onCheckedChange={(checked: boolean | "indeterminate") => setUseAi(!!checked)}
+                  />
+                  <label
+                    htmlFor="use-ai"
+                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    Clean with AI
+                  </label>
+                </div>
+              </div>
+              
+              <div className="bg-muted p-4 rounded-md">
+                <h4 className="text-sm font-medium mb-2">Selected Strategies:</h4>
+                <ul className="list-disc pl-5 space-y-1">
+                  {BLOCKING_STRATEGIES.map(strategy => {
+                    const isSelected =
+                      strategy.id === 'use_prefix' ? usePrefix :
+                      strategy.id === 'use_metaphone' ? useMetaphone :
+                      strategy.id === 'use_soundex' ? useSoundex :
+                      strategy.id === 'use_ngram' ? useNgram : false;
+                    
+                    return isSelected ? (
+                      <li key={strategy.id} className="text-sm">
+                        <span className="font-medium">{strategy.name}:</span> {strategy.description}
+                      </li>
+                    ) : null;
+                  })}
+                  {useAi && (
+                    <li className="text-sm">
+                      <span className="font-medium">Clean with AI:</span> Uses AI to analyze and determine duplicate confidence
+                    </li>
+                  )}
+                </ul>
+                
+                {rowCount && (
+                  <div className="mt-4 border-t border-border pt-3">
+                    <h4 className="text-sm font-medium mb-2">Estimated Processing Time:</h4>
+                    <div className="flex items-center">
+                      <div className="text-sm">
+                        {(() => {
+                          const estimate = calculateEstimatedTime();
+                          if (!estimate) return "Calculating...";
+                          
+                          return (
+                            <span className="font-medium">
+                              ~{estimate.minutes > 0 ? `${estimate.minutes} minute${estimate.minutes !== 1 ? 's' : ''}` : ''}
+                              {estimate.seconds > 0 ? `${estimate.minutes > 0 ? ' ' : ''}${estimate.seconds} second${estimate.seconds !== 1 ? 's' : ''}` : ''}
+                            </span>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    
+                    {useAi && (
+                      <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-md">
+                        <strong>Note:</strong> AI processing significantly increases processing time. For faster results,
+                        consider using non-AI strategies and using the review card's AI recommendation feature for
+                        individual rows when needed.
+                      </div>
+                    )}
+                    
+                    {useNgram && !useAi && (
+                      <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
+                        <strong>Note:</strong> N-Gram processing is more thorough but takes longer than other non-AI methods.
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label htmlFor="name-threshold">Name Matching Threshold: {nameThreshold}%</Label>
+                  </div>
+                  <Slider
+                    id="name-threshold"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[nameThreshold]}
+                    onValueChange={(value: number[]) => setNameThreshold(value[0])}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>More Inclusive</span>
+                    <span>More Precise</span>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <Label htmlFor="overall-threshold">Overall Matching Threshold: {overallThreshold}%</Label>
+                  </div>
+                  <Slider
+                    id="overall-threshold"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={[overallThreshold]}
+                    onValueChange={(value: number[]) => setOverallThreshold(value[0])}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>More Inclusive</span>
+                    <span>More Precise</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {columnHeaders.length > 0 && (
           <div className="space-y-4">
