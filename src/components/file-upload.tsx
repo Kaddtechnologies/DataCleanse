@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
-
+import { environment } from '../../environment';
 // Define the logical fields the backend expects for mapping
 const LOGICAL_FIELDS = [
   { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
@@ -24,7 +24,7 @@ const LOGICAL_FIELDS = [
   { key: 'country', label: 'Country (for info)', required: false },
 ];
 
-const API_BASE_URL = 'https://datacleansing.redocean-27211e6a.centralus.azurecontainerapps.io'; // Replace with your actual API base URL
+const API_BASE_URL = environment.apiBaseUrl;
 
 type DeduplicationKPIMetrics = {
   auto_merge: number;

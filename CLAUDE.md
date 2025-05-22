@@ -99,7 +99,7 @@ This repository contains a data deduplication and cleansing system consisting of
 - `ENVIRONMENT`: Deployment environment
 
 ### Frontend Environment Variables
-- `GOOGLE_API_KEY`: Google AI API key for Genkit
+- `OPENAI_API_KEY`: Open AI API key for Genkit
 
 ## API Endpoints
 

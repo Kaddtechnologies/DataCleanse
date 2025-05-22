@@ -1,5 +1,7 @@
 import { genkit } from 'genkit';
-import { googleAI } from '@genkit-ai/googleai';
+import { azureOpenAI, gpt41Nano, gpt4o } from 'genkitx-azure-openai'; 
+import { environment } from '../../environment';
+
 
 export const deduplicationPrompt = `
 You are an AI data deduplication and scoring assistant with expertise in evaluating duplicate records.
@@ -48,11 +50,13 @@ Please output a JSON array with objects like:
 ]
 `;
 
-export const ai = genkit({
+export const ai = genkit({ 
   plugins: [
-    googleAI({
-      apiKey: process.env.GOOGLE_API_KEY
-    })
-  ],
-  model: 'googleai/gemini-2.0-flash',
+   azureOpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      endpoint: environment.azureOpenAiEndpoint,
+       apiVersion: environment.openAiApiVersion,
+    }),
+  ],  
+  model: gpt4o
 });
