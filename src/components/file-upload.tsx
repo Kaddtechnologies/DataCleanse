@@ -1,4 +1,3 @@
-
 "use client";
 
 import type { DragEvent, ChangeEvent } from 'react';
@@ -18,11 +17,11 @@ import { Slider } from "@/components/ui/slider"
 
 // Define the logical fields the backend expects for mapping
 const LOGICAL_FIELDS = [
+  { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
   { key: 'customer_name', label: 'Customer Name (for matching)', required: true },
   { key: 'address', label: 'Address (for matching)', required: false },
   { key: 'city', label: 'City (for blocking/info)', required: false },
   { key: 'country', label: 'Country (for info)', required: false },
-  { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
 ];
 
 const API_BASE_URL = 'https://datacleansing.redocean-27211e6a.centralus.azurecontainerapps.io'; // Replace with your actual API base URL
