@@ -27,7 +27,23 @@ const AnalyzeDuplicateConfidenceOutputSchema = z.object({
     .describe(
       'The AI-suggested confidence level for the match (e.g., High, Medium, Low).'
     ),
-  reasoning: z.string().describe('The AI reasoning behind the assigned confidence level.'),
+  what: z
+    .string()
+    .describe('Clear description of the comparison and key differences found.'),
+  why: z
+    .string()
+    .describe('Detailed reasoning for the confidence assessment.'),
+  recommendation: z
+    .string()
+    .describe('Specific actions or areas needing attention.'),
+  confidenceChange: z
+    .string()
+    .optional()
+    .describe('Explanation of confidence score changes if any.'),
+  reasoning: z
+    .string()
+    .describe('The AI reasoning behind the assigned confidence level.')
+    .optional(),
 });
 export type AnalyzeDuplicateConfidenceOutput = z.infer<
   typeof AnalyzeDuplicateConfidenceOutputSchema
@@ -53,15 +69,29 @@ const prompt = ai.definePrompt({
   output: {schema: AnalyzeDuplicateConfidenceOutputSchema},
   prompt: `You are an AI assistant that analyzes potential duplicate records and suggests a confidence level for the match.
 
-  Given two records and their fuzzy matching score, determine a confidence level (High, Medium, or Low) and provide a brief reasoning.
+  Given two records and their fuzzy matching score, provide a structured analysis including:
+  1. WHAT: Clear description of the comparison and key differences found
+  2. WHY: Detailed reasoning for your confidence assessment
+  3. RECOMMENDATION: Specific actions or areas needing attention
+  4. CONFIDENCE LEVEL: High, Medium, or Low based on your analysis
+  5. CONFIDENCE CHANGE: If applicable, explain why the confidence score was upgraded or downgraded
+     (e.g., "Confidence upgraded from 89% to 92% due to additional matching phone numbers"
+           "Confidence downgraded from 77% to 60% - recommend manual review of rows X and Y")
 
   Record 1: {{{record1String}}}
   Record 2: {{{record2String}}}
   Fuzzy Matching Score: {{{fuzzyScore}}}
 
-  Consider factors like the similarity of names, addresses, and other key fields when determining the confidence level.
+  Consider factors like:
+  - Name similarity and variations
+  - Address matching and formatting differences
+  - City, state, and country consistency
+  - TPI number matches if available
+  - Overall fuzzy matching score
+
   If the fuzzy matching score is borderline (e.g., around 0.7-0.8), carefully analyze the records to identify any discrepancies or similarities that might affect the confidence level.
-  Return the confidence level and reasoning in a structured format.
+  
+  Return your analysis in a structured format with clear sections for what, why, recommendation, confidence level, and any confidence changes.
   `,
 });
 

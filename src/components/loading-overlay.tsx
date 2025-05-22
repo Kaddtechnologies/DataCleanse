@@ -6,9 +6,10 @@ import { getRandomMessageFromAnyCategory } from '@/lib/waiting-messages';
 
 interface LoadingOverlayProps {
   isVisible: boolean;
+  estimatedTime?: { minutes: number; seconds: number; totalTimeSeconds: number } | null;
 }
 
-export function LoadingOverlay({ isVisible }: LoadingOverlayProps) {
+export function LoadingOverlay({ isVisible, estimatedTime }: LoadingOverlayProps) {
   const [message, setMessage] = useState("Processing your files, please wait...");
   const [showRandomMessages, setShowRandomMessages] = useState(false);
 
@@ -52,6 +53,18 @@ export function LoadingOverlay({ isVisible }: LoadingOverlayProps) {
           <p className="text-center text-sm text-muted-foreground animate-fade-in">
             {message}
           </p>
+          
+          {estimatedTime && (
+            <div className="mt-2 text-xs text-center">
+              <p className="text-muted-foreground">
+                Estimated time remaining:
+                <span className="font-medium ml-1">
+                  ~{estimatedTime.minutes > 0 ? `${estimatedTime.minutes} minute${estimatedTime.minutes !== 1 ? 's' : ''}` : ''}
+                  {estimatedTime.seconds > 0 ? `${estimatedTime.minutes > 0 ? ' ' : ''}${estimatedTime.seconds} second${estimatedTime.seconds !== 1 ? 's' : ''}` : ''}
+                </span>
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

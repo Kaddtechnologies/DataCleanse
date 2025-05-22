@@ -104,20 +104,70 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore }: AiAnalysisDi
     <Card className="bg-secondary/30 border-secondary/50 shadow-inner">
       <CardHeader>
         <CardTitle className="text-lg flex items-center">
-           {analysis.confidenceLevel.toLowerCase() === 'high' && <CheckCircle className="w-5 h-5 mr-2 text-green-600" />}
-           {analysis.confidenceLevel.toLowerCase() === 'medium' && <AlertTriangle className="w-5 h-5 mr-2 text-yellow-600" />}
-           {analysis.confidenceLevel.toLowerCase() === 'low' && <XCircle className="w-5 h-5 mr-2 text-red-600" />}
+          {analysis.confidenceLevel.toLowerCase() === 'high' && <CheckCircle className="w-5 h-5 mr-2 text-green-600" />}
+          {analysis.confidenceLevel.toLowerCase() === 'medium' && <AlertTriangle className="w-5 h-5 mr-2 text-yellow-600" />}
+          {analysis.confidenceLevel.toLowerCase() === 'low' && <XCircle className="w-5 h-5 mr-2 text-red-600" />}
           AI Confidence Analysis
         </CardTitle>
+        <CardDescription>
+          <div className="flex items-center gap-2 mt-1">
+            <span>Match Confidence:</span>
+            <Badge 
+              className={`${confidenceColor} text-white font-medium px-3 py-0.5`}
+              variant="secondary"
+            >
+              {analysis.confidenceLevel} ({(fuzzyScore * 100).toFixed(0)}%)
+            </Badge>
+          </div>
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div>
-          <span className="font-semibold">Confidence Level: </span>
-          <Badge className={`${confidenceColor} text-white`}>{analysis.confidenceLevel}</Badge>
-        </div>
-        <div>
-          <p className="font-semibold mb-1">Reasoning:</p>
-          <p className="text-sm text-muted-foreground bg-background/50 p-3 rounded-md border">{analysis.reasoning}</p>
+      <CardContent>
+        <div className="space-y-4">
+          {/* What Section */}
+          <div className="bg-background/50 p-4 rounded-lg border">
+            <h3 className="text-sm font-semibold flex items-center mb-2">
+              <Info className="w-4 h-4 mr-2 text-primary" />
+              What We Found
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {analysis.what || "Analysis of key differences between records."}
+            </p>
+          </div>
+
+          {/* Why Section */}
+          <div className="bg-background/50 p-4 rounded-lg border">
+            <h3 className="text-sm font-semibold flex items-center mb-2">
+              <AlertTriangle className="w-4 h-4 mr-2 text-yellow-600" />
+              Why This Matters
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {analysis.why || analysis.reasoning}
+            </p>
+          </div>
+
+          {/* Recommendation Section */}
+          <div className="bg-background/50 p-4 rounded-lg border">
+            <h3 className="text-sm font-semibold flex items-center mb-2">
+              <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+              Recommended Action
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {analysis.recommendation || "Based on our analysis, we recommend reviewing the highlighted differences before making a decision."}
+            </p>
+          </div>
+
+          {/* Confidence Change Section - Only show if there's a change */}
+          {analysis.confidenceChange && (
+            <div className="bg-primary/5 p-4 rounded-lg border border-primary/20">
+              <h3 className="text-sm font-semibold flex items-center mb-2">
+                <Info className="w-4 h-4 mr-2 text-primary" />
+                Confidence Update
+              </h3>
+              <p className="text-sm text-primary-foreground/80">
+                {analysis.confidenceChange}
+              </p>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
