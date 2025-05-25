@@ -11,9 +11,10 @@ import { Check, X, SkipForwardIcon, User, Mail, Phone, MapPin } from 'lucide-rea
 
 interface CardReviewModalProps {
   pair: DuplicatePair | null;
+  recordName?: string;
   isOpen: boolean;
   onClose: () => void;
-  onResolve: (pairId: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => void;
+  onResolve: (pairId: string, recordName: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => void;
 }
 
 const RecordDetail = ({ icon: Icon, label, value, showIfEmpty = false }: {
@@ -147,7 +148,7 @@ const ConfidenceIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 
-export function CardReviewModal({ pair, isOpen, onClose, onResolve }: CardReviewModalProps) {
+export function CardReviewModal({ pair, recordName, isOpen, onClose, onResolve }: CardReviewModalProps) {
   if (!pair) return null;
 
   return (
@@ -176,16 +177,16 @@ export function CardReviewModal({ pair, isOpen, onClose, onResolve }: CardReview
             />
 
             <DialogFooter className="mt-8 gap-2 md:gap-0">
-              <Button variant="outline" onClick={() => onResolve(pair.id, 'skipped')} className="w-full md:w-auto">
+              <Button variant="outline" onClick={() => onResolve(pair.id, pair.record1.name, 'skipped')} className="w-full md:w-auto">
                 <SkipForwardIcon className="w-4 h-4 mr-2" />
                 Skip
               </Button>
               <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                <Button variant="destructive" onClick={() => onResolve(pair.id, 'not_duplicate')} className="flex-1">
+                <Button variant="destructive" onClick={() => onResolve(pair.id, pair.record1.name, 'not_duplicate')} className="flex-1">
                   <X className="w-4 h-4 mr-2" />
                   Not a Duplicate
                 </Button>
-                <Button onClick={() => onResolve(pair.id, 'duplicate')} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                <Button onClick={() => onResolve(pair.id, pair.record1.name, 'duplicate')} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
                   <Check className="w-4 h-4 mr-2" />
                   Mark as Duplicate
                 </Button>
