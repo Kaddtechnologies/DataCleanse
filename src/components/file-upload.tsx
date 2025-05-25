@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
-import { environment } from '../../environment';
+
 // Define the logical fields the backend expects for mapping
 const LOGICAL_FIELDS = [
   { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
@@ -24,7 +24,7 @@ const LOGICAL_FIELDS = [
   { key: 'country', label: 'Country (for info)', required: false },
 ];
 
-const API_BASE_URL = environment.apiBaseUrl;
+const API_BASE_URL = 'http://localhost:8000'; //'https://datacleansing.redocean-27211e6a.centralus.azurecontainerapps.io'; // Replace with your actual API base URL
 
 type DeduplicationKPIMetrics = {
   auto_merge: number;
@@ -52,6 +52,7 @@ type DeduplicationResults = {
   total_potential_duplicates: number;
   kpi_metrics: DeduplicationKPIMetrics;
   stats: DeduplicationStats;
+  duplicates?: any[]; // Add optional duplicates array to match page.tsx expectations
 };
 
 type DeduplicationResponse = {
@@ -166,13 +167,41 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     "address": ["address", "addr", "street", "road"],
     "city": ["city", "town"],
     "country": ["country", "nation", "cntry", "co"],
-    "tpi": ["tpi", "id", "num", "number", "code"],
+    "tpi": [
+      "tpi", 
+      "tpi number", 
+      "tpi nummer", 
+      "tpi id", 
+      "tpi code", 
+      "tpi key", 
+      "primary key", 
+      "unique identifier", 
+      "record id",
+      "master id",
+      "customer id tpi",
+      "tpi reference",
+      "tpi ref",
+      "identifier",
+      "unique id"
+    ],
   };
 
   const autoMapColumns = useCallback((headers: string[]) => {
     const detected: Record<string, string | undefined> = {};
     LOGICAL_FIELDS.forEach(field => detected[field.key] = undefined);
 
+    // First pass: Look for TPI-specific terms (prioritize explicit TPI references)
+    headers.forEach(col => {
+      const col_n = normalize(col);
+      
+      // Check for explicit TPI references first
+      const tpiSpecificTerms = ["tpi", "tpi number", "tpi nummer", "tpi id", "tpi code", "tpi key", "tpi reference", "tpi ref"];
+      if (tpiSpecificTerms.some(hint => col_n.includes(hint)) && detected.tpi === undefined) {
+        detected.tpi = col;
+      }
+    });
+
+    // Second pass: Map other fields and remaining TPI terms
     headers.forEach(col => {
       const col_n = normalize(col);
       for (const key in CANDIDATE_MAP) {
@@ -267,6 +296,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       onFileProcessed({
         message: "",
         results: {
+          duplicates: [], // Add empty duplicates array to match expected structure
           duplicate_group_count: 0,
           total_potential_duplicates: 0,
           kpi_metrics: {
@@ -386,16 +416,12 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       const formData = new FormData();
       formData.append('file', processedFile);
 
-      // Prepare column mapping data
-      const columnMapData = {
-        customer_name: columnMap.customer_name || null,
-        address: columnMap.address || null,
-        city: columnMap.city || null,
-        country: columnMap.country || null,
-        tpi: columnMap.tpi || null
-      };
-      formData.append('column_map_json', JSON.stringify(columnMapData));
-      formData.append('encoding', 'utf-8');
+      // Add individual column mapping fields
+      formData.append('customer_name_column', columnMap.customer_name || '');
+      formData.append('address_column', columnMap.address || '');
+      formData.append('city_column', columnMap.city || '');
+      formData.append('country_column', columnMap.country || '');
+      formData.append('tpi_column', columnMap.tpi || '');
       
       // Add blocking strategy configuration
       formData.append('use_prefix', usePrefix.toString());
@@ -407,7 +433,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       formData.append('overall_threshold', overallThreshold.toString());
 
       // Make API request
-      const response = await fetch(`${API_BASE_URL}/deduplicate/`, {
+      const response = await fetch(`${API_BASE_URL}/api/find-duplicates`, {
         method: 'POST',
         body: formData,
       });

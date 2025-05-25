@@ -10,7 +10,15 @@ import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
 import { AiAnalysisNotification } from '@/components/ai-analysis-display';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, BrainCircuit } from 'lucide-react';
+import { Loader2, BrainCircuit, CheckCircle, AlertTriangle } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter
+} from "@/components/ui/dialog";
 import { analyzeDuplicateConfidence, type AnalyzeDuplicateConfidenceOutput } from '@/ai/flows/analyze-duplicate-confidence';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +41,9 @@ export default function HomePage() {
   const { toast } = useToast();
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [isBulkMerging, setIsBulkMerging] = useState(false);
+  const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
+  const [pairsToMerge, setPairsToMerge] = useState<DuplicatePair[]>([]);
 
   const fetchAiAnalysisForPair = async (pairInput: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>): Promise<Partial<DuplicatePair>> => {
     // Decide if AI analysis should run (e.g., based on score or if not already analyzed)
@@ -60,6 +71,13 @@ export default function HomePage() {
     setSelectedRowIds(new Set()); // Clear selection on new file
 
     try {
+      // Check if duplicates array exists and has items
+      if (!apiResponse.results.duplicates || apiResponse.results.duplicates.length === 0) {
+        // Clear the data and return early
+        setDuplicateData([]);
+        return;
+      }
+      
       // Transform the API response into the format expected by the data grid
       const duplicateGroups = apiResponse.results.duplicates.map((group: any) => {
         const masterRecord = {
@@ -112,11 +130,15 @@ export default function HomePage() {
       }).flat();
 
       setDuplicateData(duplicateGroups);
-      toast({
-        title: "Deduplication Complete",
-        description: `Found ${apiResponse.results.stats.total_potential_duplicate_records} potential duplicates in ${apiResponse.results.stats.total_master_records_with_duplicates} groups.`,
-        variant: "default"
-      });
+      
+      // Only show toast for successful deduplication with actual results
+      if (duplicateGroups.length > 0) {
+        toast({
+          title: "Deduplication Complete",
+          description: `Found ${apiResponse.results.stats.total_potential_duplicate_records} potential duplicates in ${apiResponse.results.stats.total_master_records_with_duplicates} groups.`,
+          variant: "default"
+        });
+      }
     } catch (error) {
       console.error('Error processing API response:', error);
       toast({
@@ -137,7 +159,7 @@ export default function HomePage() {
     setSelectedPairForReview(null);
   };
 
-  const handleResolvePair = (pairId: string, resolution: 'merged' | 'not_duplicate' | 'skipped') => {
+  const handleResolvePair = (pairId: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
     setDuplicateData(prevData =>
       prevData.map(p => p.id === pairId ? { ...p, status: resolution } : p)
     );
@@ -217,6 +239,63 @@ export default function HomePage() {
     });
   };
 
+  const handleBulkMerge = () => {
+    // Only consider pending pairs with both high AI confidence AND high similarity score
+    const eligiblePairs = duplicateData.filter(pair => {
+      // Only consider pending pairs
+      if (pair.status !== 'pending') return false;
+      
+      // Both conditions must be true for high confidence
+      return (pair.aiConfidence === 'high' && pair.similarityScore >= 0.98);
+    });
+
+    if (eligiblePairs.length === 0) {
+      toast({
+        title: "No Eligible Pairs",
+        description: "No pending pairs with high confidence found. Only pairs with both high AI confidence and ≥98% similarity score are eligible for automatic merging.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Store pairs to merge and show confirmation dialog
+    setPairsToMerge(eligiblePairs);
+    setShowMergeConfirmation(true);
+  };
+
+  const confirmBulkMerge = async () => {
+    setIsBulkMerging(true);
+    setShowMergeConfirmation(false);
+    
+    // Create a temporary array for updates
+    let updatedData = [...duplicateData];
+    let mergeCount = 0;
+
+    // Process each pair
+    for (const pair of pairsToMerge) {
+      const pairIndex = updatedData.findIndex(p => p.id === pair.id);
+      if (pairIndex !== -1) {
+        updatedData[pairIndex] = { ...updatedData[pairIndex], status: 'merged' };
+        mergeCount++;
+      }
+    }
+
+    // Update state
+    setDuplicateData(updatedData);
+    setIsBulkMerging(false);
+    setPairsToMerge([]);
+    
+    toast({
+      title: "Bulk Merge Complete",
+      description: `Successfully merged ${mergeCount} high confidence pairs.`,
+      variant: "default"
+    });
+  };
+
+  const cancelBulkMerge = () => {
+    setShowMergeConfirmation(false);
+    setPairsToMerge([]);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -239,35 +318,63 @@ export default function HomePage() {
           <>
             <Card className="mb-6 shadow-md">
               <CardHeader>
-                <CardTitle className="text-xl">Bulk AI Actions</CardTitle>
+                <CardTitle className="text-xl">Bulk Actions</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap items-center gap-4">
-                  <Button
-                    onClick={handleBulkAiAnalyze}
-                    disabled={selectedRowIds.size === 0 || isBulkProcessing}
-                  >
-                    {isBulkProcessing ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <BrainCircuit className="mr-2 h-4 w-4" />
-                    )}
-                    {isBulkProcessing ? `Analyzing ${selectedRowIds.size} selected...` : `Analyze Selected (${selectedRowIds.size})`}
-                  </Button>
-                  {selectedRowIds.size > 0 && !isBulkProcessing && (
-                      <p className="text-sm text-muted-foreground">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* AI Analysis Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground">AI Analysis</h3>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Button
+                        onClick={handleBulkAiAnalyze}
+                        disabled={selectedRowIds.size === 0 || isBulkProcessing}
+                        variant="outline"
+                      >
+                        {isBulkProcessing ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <BrainCircuit className="mr-2 h-4 w-4" />
+                        )}
+                        {isBulkProcessing ? `Analyzing ${selectedRowIds.size} selected...` : `Analyze Selected (${selectedRowIds.size})`}
+                      </Button>
+                      {selectedRowIds.size > 0 && !isBulkProcessing && (
+                        <p className="text-sm text-muted-foreground">
                           {selectedRowIds.size} {selectedRowIds.size === 1 ? 'pair' : 'pairs'} ready for AI analysis.
-                      </p>
-                  )}
-                  {selectedRowIds.size === 0 && !isBulkProcessing && (
-                      <p className="text-sm text-muted-foreground">
+                        </p>
+                      )}
+                      {selectedRowIds.size === 0 && !isBulkProcessing && (
+                        <p className="text-sm text-muted-foreground">
                           Select rows in the table below to begin.
-                      </p>
-                  )}
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      <AiAnalysisNotification />
+                    </div>
+                  </div>
+
+                  {/* Merge Actions Section */}
+                  <div className="space-y-4">
+                    <h3 className="text-sm font-medium text-muted-foreground">Auto-Merge High Confidence</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="bg-green-500 hover:bg-green-600"
+                        onClick={handleBulkMerge}
+                        disabled={isBulkMerging}
+                      >
+                        {isBulkMerging ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
+                        Merge High Confidence Pairs
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically merge duplicate entries with both high AI confidence and ≥98% similarity score.
+                      All other confidence levels require manual review.
+                    </p>
+                  </div>
                 </div>
-                <div className="mt-4">
-                <AiAnalysisNotification />
-              </div>
               </CardContent>
             </Card>
 
@@ -305,10 +412,40 @@ export default function HomePage() {
           onResolve={handleResolvePair}
         />
       )}
+      
+      {/* Confirmation Dialog for Bulk Merge */}
+      <Dialog open={showMergeConfirmation} onOpenChange={setShowMergeConfirmation}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Bulk Merge</DialogTitle>
+            <DialogDescription>
+              You are about to merge {pairsToMerge.length} high confidence duplicate pairs.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2 py-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <p className="text-sm text-muted-foreground">
+              Only pairs with both high AI confidence and ≥98% similarity score will be merged.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelBulkMerge}>Cancel</Button>
+            <Button
+              variant="default"
+              className="bg-green-500 hover:bg-green-600"
+              onClick={confirmBulkMerge}
+            >
+              Confirm Merge
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-        © {new Date().getFullYear()} DataCleanse. All rights reserved.
-      </footer>
-    </div>
+         © {new Date().getFullYear()} DataCleanse. All rights reserved.
+       </footer>
+     </div>
   );
 }
 

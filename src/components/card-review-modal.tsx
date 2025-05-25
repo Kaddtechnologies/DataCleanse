@@ -13,7 +13,7 @@ interface CardReviewModalProps {
   pair: DuplicatePair | null;
   isOpen: boolean;
   onClose: () => void;
-  onResolve: (pairId: string, resolution: 'merged' | 'not_duplicate' | 'skipped') => void;
+  onResolve: (pairId: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => void;
 }
 
 const RecordDetail = ({ icon: Icon, label, value, showIfEmpty = false }: {
@@ -185,7 +185,7 @@ export function CardReviewModal({ pair, isOpen, onClose, onResolve }: CardReview
                   <X className="w-4 h-4 mr-2" />
                   Not a Duplicate
                 </Button>
-                <Button onClick={() => onResolve(pair.id, 'merged')} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                <Button onClick={() => onResolve(pair.id, 'duplicate')} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
                   <Check className="w-4 h-4 mr-2" />
                   Mark as Duplicate
                 </Button>

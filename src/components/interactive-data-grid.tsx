@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { DuplicatePair } from '@/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -104,7 +104,7 @@ const DataTablePagination = ({
 interface InteractiveDataGridProps {
   data: DuplicatePair[];
   onReviewPair: (pair: DuplicatePair) => void;
-  onUpdatePairStatus: (pairId: string, status: Exclude<DuplicatePair['status'], 'pending'>) => void;
+  onUpdatePairStatus: (pairId: string, status: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => void;
   selectedRowIds: Set<string>;
   onToggleRowSelection: (pairId: string) => void;
   onToggleSelectAll: () => void;
@@ -114,6 +114,8 @@ const StatusBadge = ({ status }: { status: DuplicatePair['status'] }) => {
   switch (status) {
     case 'merged':
       return <Badge variant="default" className="bg-green-500 hover:bg-green-600"><CheckCircle className="w-3 h-3 mr-1" /> Merged</Badge>;
+    case 'duplicate':
+      return <Badge variant="default" className="bg-blue-500 hover:bg-blue-600"><CheckCircle className="w-3 h-3 mr-1" /> Duplicate</Badge>;
     case 'not_duplicate':
       return <Badge variant="secondary"><XCircle className="w-3 h-3 mr-1" /> Not Duplicate</Badge>;
     case 'skipped':
@@ -170,6 +172,25 @@ export function InteractiveDataGrid({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
+  
+  // Filter data based on status and confidence filters
+  const filteredData = useMemo(() => {
+    return data.filter(pair => {
+      // Apply status filter
+      if (statusFilter !== "all" && pair.status !== statusFilter) {
+        return false;
+      }
+      
+      // Apply confidence filter
+      if (confidenceFilter !== "all" && pair.aiConfidence !== confidenceFilter) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [data, statusFilter, confidenceFilter]);
 
   const columns: ColumnDef<DuplicatePair>[] = [
     {
@@ -205,6 +226,9 @@ export function InteractiveDataGrid({
             {row.original.record1.city && `${row.original.record1.city}, ${row.original.record1.country || ''}`}
             {!row.original.record1.city && row.original.record1.country}
           </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            <Badge variant="outline" className="bg-slate-100">Row: {row.original.record1.rowsNumber || 'N/A'}</Badge>
+          </div>
         </div>
       ),
       enableSorting: true,
@@ -219,6 +243,9 @@ export function InteractiveDataGrid({
           <div className="text-xs text-muted-foreground">
             {row.original.record2.city && `${row.original.record2.city}, ${row.original.record2.country || ''}`}
             {!row.original.record2.city && row.original.record2.country}
+          </div>
+          <div className="text-xs text-muted-foreground mt-1">
+            <Badge variant="outline" className="bg-slate-100">Row: {row.original.record2.rowNumber || 'N/A'}</Badge>
           </div>
         </div>
       ),
@@ -285,7 +312,7 @@ export function InteractiveDataGrid({
   ];
 
   const table = useReactTable({
-    data,
+    data: filteredData,
     columns,
     state: {
       sorting,
@@ -333,6 +360,7 @@ export function InteractiveDataGrid({
             case 'not_duplicate': return 'Not Duplicate';
             case 'skipped': return 'Skipped';
             case 'pending': return 'Skipped - Needs Review';
+            case 'duplicate': return 'Duplicate';
             default: return 'Unknown Status';
           }
         };
@@ -356,10 +384,15 @@ export function InteractiveDataGrid({
           'merged': [],
           'not_duplicate': [],
           'skipped': [],
-          'pending': []
+          'pending': [],
+          'duplicate': []
         };
         
         sortedData.forEach(pair => {
+          // Make sure the status exists in groupedData
+          if (!groupedData[pair.status]) {
+            groupedData[pair.status] = [];
+          }
           groupedData[pair.status].push(pair);
         });
         
@@ -385,7 +418,7 @@ export function InteractiveDataGrid({
         exportData.push({});
         
         // Add section headers and data for each status group
-        ['merged', 'not_duplicate', 'skipped', 'pending'].forEach(status => {
+        Object.keys(groupedData).forEach(status => {
           if (groupedData[status].length > 0) {
             // Add section header
             exportData.push({
@@ -424,28 +457,52 @@ export function InteractiveDataGrid({
             
             // Add data rows
             groupedData[status].forEach(pair => {
-              const row: any = {
-                masterRowId: pair.record1.rowId || '',
-                duplicateRowId: pair.record2.rowId || '',
-                masterName: pair.record1.name || '',
-                masterAddress: pair.record1.address || '',
-                masterCity: pair.record1.city || '',
-                masterCountry: pair.record1.country || '',
-                masterTpi: pair.record1.tpi || '',
-                duplicateName: pair.record2.name || '',
-                duplicateAddress: pair.record2.address || '',
-                duplicateCity: pair.record2.city || '',
-                duplicateCountry: pair.record2.country || '',
-                duplicateTpi: pair.record2.tpi || '',
-                similarityScore: `${(pair.similarityScore * 100).toFixed(0)}%`,
-                aiConfidence: pair.aiConfidence || '-',
-                status: getStatusDisplayName(pair.status),
-                action: status === 'merged' ? 'Merged to Master' : 
-                        status === 'not_duplicate' ? 'Kept Both Records' : 
-                        'Pending Decision'
-              };
-              
-              exportData.push(row);
+              // For merged and duplicate, only keep the master record
+              if (status === 'merged' || status === 'duplicate') {
+                const row: any = {
+                  masterRowId: pair.record1.rowId || '',
+                  duplicateRowId: '',
+                  masterName: pair.record1.name || '',
+                  masterAddress: pair.record1.address || '',
+                  masterCity: pair.record1.city || '',
+                  masterCountry: pair.record1.country || '',
+                  masterTpi: pair.record1.tpi || '',
+                  duplicateName: '',
+                  duplicateAddress: '',
+                  duplicateCity: '',
+                  duplicateCountry: '',
+                  duplicateTpi: '',
+                  similarityScore: `${(pair.similarityScore * 100).toFixed(0)}%`,
+                  aiConfidence: pair.aiConfidence || '-',
+                  status: getStatusDisplayName(pair.status),
+                  action: 'Merged to Master'
+                };
+                
+                exportData.push(row);
+              }
+              // For skipped and not_duplicate, keep both records
+              else if (status === 'skipped' || status === 'not_duplicate' || status === 'pending') {
+                const row: any = {
+                  masterRowId: pair.record1.rowId || '',
+                  duplicateRowId: pair.record2.rowId || '',
+                  masterName: pair.record1.name || '',
+                  masterAddress: pair.record1.address || '',
+                  masterCity: pair.record1.city || '',
+                  masterCountry: pair.record1.country || '',
+                  masterTpi: pair.record1.tpi || '',
+                  duplicateName: pair.record2.name || '',
+                  duplicateAddress: pair.record2.address || '',
+                  duplicateCity: pair.record2.city || '',
+                  duplicateCountry: pair.record2.country || '',
+                  duplicateTpi: pair.record2.tpi || '',
+                  similarityScore: `${(pair.similarityScore * 100).toFixed(0)}%`,
+                  aiConfidence: pair.aiConfidence || '-',
+                  status: getStatusDisplayName(pair.status),
+                  action: status === 'not_duplicate' ? 'Kept Both Records' : 'Pending Decision'
+                };
+                
+                exportData.push(row);
+              }
             });
             
             // Add empty row as separator
@@ -531,31 +588,69 @@ export function InteractiveDataGrid({
         <CardTitle className="text-2xl font-semibold">Potential Duplicates Review</CardTitle>
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Found {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
+            Showing {filteredData.length} of {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
+            {statusFilter !== "all" && ` (Status: ${statusFilter})`}
+            {confidenceFilter !== "all" && ` (Confidence: ${confidenceFilter})`}
           </p>
-          <div className="flex items-center space-x-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleExportToExcel} 
-              disabled={!data || data.length === 0 || isExporting}
-            >
-              {isExporting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Exporting...
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4 mr-2" /> Export to Excel
-                </>
-              )}
-            </Button>
-            <Input
-              placeholder="Search all columns..."
-              value={globalFilter ?? ""}
-              onChange={(event) => setGlobalFilter(event.target.value)}
-              className="max-w-sm"
-            />
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:space-x-2">
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportToExcel}
+                disabled={!data || data.length === 0 || isExporting}
+              >
+                {isExporting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Exporting...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4 mr-2" /> Export to Excel
+                  </>
+                )}
+              </Button>
+              <Input
+                placeholder="Search all columns..."
+                value={globalFilter ?? ""}
+                onChange={(event) => setGlobalFilter(event.target.value)}
+                className="max-w-sm"
+              />
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <Select
+                value={statusFilter}
+                onValueChange={setStatusFilter}
+              >
+                <SelectTrigger className="h-8 w-[130px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                  <SelectItem value="merged">Merged</SelectItem>
+                  <SelectItem value="duplicate">Duplicate</SelectItem>
+                  <SelectItem value="not_duplicate">Not Duplicate</SelectItem>
+                  <SelectItem value="skipped">Skipped</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select
+                value={confidenceFilter}
+                onValueChange={setConfidenceFilter}
+              >
+                <SelectTrigger className="h-8 w-[130px]">
+                  <SelectValue placeholder="Confidence" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Confidence</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
       </CardHeader>
