@@ -37,5 +37,5 @@ export interface DuplicatePair {
   similarityScore: number; // The fuzzy matching score
   aiConfidence?: string;
   aiReasoning?: string;
-  status: 'pending' | 'merged' | 'not_duplicate' | 'skipped';
+  status: 'pending' | 'merged' | 'not_duplicate' | 'skipped' | 'duplicate';
 }
