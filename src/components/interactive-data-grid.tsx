@@ -227,7 +227,7 @@ export function InteractiveDataGrid({
             {!row.original.record1.city && row.original.record1.country}
           </div>
           <div className="text-xs text-muted-foreground mt-1">
-            <Badge variant="outline" className="bg-slate-100">Row: {row.original.record1.rowsNumber || 'N/A'}</Badge>
+            <Badge variant="outline" className="bg-slate-100">Row: {row.original.record1.rowNumber || 'N/A'}</Badge>
           </div>
         </div>
       ),

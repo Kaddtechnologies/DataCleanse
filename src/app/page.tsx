@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -159,12 +158,19 @@ export default function HomePage() {
     setSelectedPairForReview(null);
   };
 
-  const handleResolvePair = (pairId: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
+  const handleResolvePair = (pairId: string, recordName: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
     setDuplicateData(prevData =>
       prevData.map(p => p.id === pairId ? { ...p, status: resolution } : p)
     );
     setSelectedPairForReview(null);
-    toast({ title: "Pair Resolved", description: `Record pair ${pairId} marked as ${resolution.replace('_', ' ')}.`, variant: "default" });
+    toast({ title: "Pair Resolved", description: `Record pair ${recordName} marked as ${resolution.replace('_', ' ')}.`, variant: "default" });
+  };
+
+  // Wrapper function for InteractiveDataGrid that only takes pairId and status
+  const handleUpdatePairStatus = (pairId: string, status: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
+    const pair = duplicateData.find(p => p.id === pairId);
+    const recordName = pair?.record1.name || 'Unknown';
+    handleResolvePair(pairId, recordName, status);
   };
   
   const handleExport = (format: 'csv' | 'excel') => {
@@ -383,7 +389,7 @@ export default function HomePage() {
               <InteractiveDataGrid
                 data={duplicateData}
                 onReviewPair={handleReviewPair}
-                onUpdatePairStatus={handleResolvePair}
+                onUpdatePairStatus={handleUpdatePairStatus}
                 selectedRowIds={selectedRowIds}
                 onToggleRowSelection={handleToggleRowSelection}
                 onToggleSelectAll={handleToggleSelectAll}
@@ -407,6 +413,7 @@ export default function HomePage() {
       {selectedPairForReview && (
         <CardReviewModal
           pair={selectedPairForReview}
+          recordName={selectedPairForReview.record1.name}
           isOpen={!!selectedPairForReview}
           onClose={handleCloseModal}
           onResolve={handleResolvePair}

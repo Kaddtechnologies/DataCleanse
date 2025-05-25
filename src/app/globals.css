@@ -96,7 +96,7 @@ body {
 
 /* Custom gradient classes */
 .bg-primary-gradient {
-  background-image: linear-gradient(to right, #20160C, #090909);
+  background-image: linear-gradient(to right, #472d14, #0b0800);
 }
 
 .bg-secondary-gradient {
