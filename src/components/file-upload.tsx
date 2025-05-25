@@ -325,10 +325,11 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [currentTourStep, setCurrentTourStep] = useState(0);
   const [tourHighlightedElement, setTourHighlightedElement] = useState<string | null>(null);
   
-  // Refs for tour highlighting
+  // Refs for tour highlighting and file input
   const blockingSectionRef = useRef<HTMLDivElement>(null);
   const columnMappingRef = useRef<HTMLDivElement>(null);
   const thresholdsSectionRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Processing time estimates per 100 records (in seconds)
   const PROCESSING_TIMES = {
@@ -611,6 +612,11 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       await getFileRowCount(selectedFile);
       toast({ title: "File Selected", description: selectedFile.name });
     } else {
+      // Clear the file input value to allow re-selecting the same file
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      
       resetState();
       // When file is removed, call onFileProcessed with empty results to clear the table
       onFileProcessed({
@@ -878,6 +884,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
             className="hidden"
             onChange={handleFileChange}
             accept=".csv,.xls,.xlsx"
+            ref={fileInputRef}
           />
           {file ? (
             <div className="text-center">

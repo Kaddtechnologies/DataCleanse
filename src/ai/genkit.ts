@@ -1,6 +1,7 @@
 import { genkit } from 'genkit';
 import { azureOpenAI } from 'genkitx-azure-openai';
 import { environment } from '../../environment';
+import { googleAI } from '@genkit-ai/googleai';
 
 
 export const deduplicationPrompt = `
@@ -50,14 +51,24 @@ Please output a JSON array with objects like:
 ]
 `;
 
+// export const ai = genkit({
+//   plugins: [
+//     azureOpenAI({
+//       apiKey: environment.azureOpenAiApiKey,
+//       endpoint: environment.azureOpenAiEndpoint,
+//       apiVersion: environment.openAiApiVersion,
+//       deployment: environment.azureOpenAiDeploymentName,
+//     }),
+//   ],
+//   model: 'azure-openai/gpt-4.1-nano'
+// });
+
+//Export Geminit instance of Genkit using Google Api
 export const ai = genkit({
   plugins: [
-    azureOpenAI({
-      apiKey: environment.azureOpenAiApiKey,
-      endpoint: environment.azureOpenAiEndpoint,
-      apiVersion: environment.openAiApiVersion,
-      deployment: environment.azureOpenAiDeploymentName,
-    }),
+    googleAI({
+      apiKey: environment.googleApiKey
+    })
   ],
-  model: 'azure-openai/gpt-4.1-nano'
+  model: 'googleai/gemini-2.0-flash',
 });
