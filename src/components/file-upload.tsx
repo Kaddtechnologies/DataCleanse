@@ -17,15 +17,13 @@ import { Slider } from "@/components/ui/slider"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { environment } from '../../environment';
-
-// Define the logical fields the backend expects for mapping
-const LOGICAL_FIELDS = [
-  { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
-  { key: 'customer_name', label: 'Customer Name (for matching)', required: true },
-  { key: 'address', label: 'Address (for matching)', required: false },
-  { key: 'city', label: 'City (for blocking/info)', required: false },
-  { key: 'country', label: 'Country (for info)', required: false },
-];
+import { 
+  LOGICAL_FIELDS, 
+  autoMapColumns, 
+  logMappingResults, 
+  validateRequiredMappings,
+  type AutoMappingResult 
+} from '@/lib/canonical-field-mapping';
 
 const API_BASE_URL = ''; // Use relative URL for Next.js API routes
 
@@ -380,6 +378,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     setShowInteractiveTour(true);
     setCurrentTourStep(0);
     setTourHighlightedElement(TOUR_STEPS[0].id);
+    setTourCardPosition('bottom-4'); // Reset to default position
   }, []);
 
   const nextTourStep = useCallback(() => {
@@ -387,6 +386,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       const nextStep = currentTourStep + 1;
       setCurrentTourStep(nextStep);
       setTourHighlightedElement(TOUR_STEPS[nextStep].id);
+      setTourCardPosition('bottom-4'); // Reset position for recalculation
     } else {
       setShowInteractiveTour(false);
       setTourHighlightedElement(null);
@@ -399,6 +399,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       const prevStep = currentTourStep - 1;
       setCurrentTourStep(prevStep);
       setTourHighlightedElement(TOUR_STEPS[prevStep].id);
+      setTourCardPosition('bottom-4'); // Reset position for recalculation
     }
   }, [currentTourStep]);
 
@@ -425,30 +426,30 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       .map((line, index) => {
         // Headers
         if (line.startsWith('### ')) {
-          return <h3 key={index} className="text-lg font-semibold mt-4 mb-2 text-gray-800">{line.slice(4)}</h3>;
+          return <h3 key={index} className="text-lg font-semibold mt-4 mb-2 text-foreground">{line.slice(4)}</h3>;
         }
         if (line.startsWith('## ')) {
-          return <h2 key={index} className="text-xl font-bold mt-6 mb-3 text-gray-900">{line.slice(3)}</h2>;
+          return <h2 key={index} className="text-xl font-bold mt-6 mb-3 text-foreground">{line.slice(3)}</h2>;
         }
         if (line.startsWith('# ')) {
-          return <h1 key={index} className="text-2xl font-bold mt-8 mb-4 text-gray-900">{line.slice(2)}</h1>;
+          return <h1 key={index} className="text-2xl font-bold mt-8 mb-4 text-foreground">{line.slice(2)}</h1>;
         }
         
         // Lists
         if (line.startsWith('- ')) {
-          return <li key={index} className="ml-4 mb-1 text-gray-700">{line.slice(2)}</li>;
+          return <li key={index} className="ml-4 mb-1 text-muted-foreground">{line.slice(2)}</li>;
         }
         if (line.match(/^\d+\. /)) {
-          return <li key={index} className="ml-4 mb-1 text-gray-700 list-decimal">{line.replace(/^\d+\. /, '')}</li>;
+          return <li key={index} className="ml-4 mb-1 text-muted-foreground list-decimal">{line.replace(/^\d+\. /, '')}</li>;
         }
         
         // Bold text
         if (line.includes('**')) {
           const parts = line.split('**');
           return (
-            <p key={index} className="mb-2 text-gray-700">
+            <p key={index} className="mb-2 text-muted-foreground">
               {parts.map((part, i) => 
-                i % 2 === 1 ? <strong key={i} className="font-semibold">{part}</strong> : part
+                i % 2 === 1 ? <strong key={i} className="font-semibold text-foreground">{part}</strong> : part
               )}
             </p>
           );
@@ -456,7 +457,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         
         // Regular paragraphs
         if (line.trim()) {
-          return <p key={index} className="mb-2 text-gray-700">{line}</p>;
+          return <p key={index} className="mb-2 text-muted-foreground">{line}</p>;
         }
         
         // Empty lines
@@ -464,65 +465,17 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       });
   }, []);
 
-  // Simple normalization function
-  const normalize = useCallback((text: string): string => {
-    text = String(text).toLowerCase().trim();
-    text = text.replace(/[^a-z0-9\s]/g, " ");
-    text = text.replace(/\s+/g, " ");
-    return text;
+  // Auto-mapping with enhanced logging
+  const performAutoMapping = useCallback((headers: string[]) => {
+    const result = autoMapColumns(headers);
+    
+    // Log the detailed results for debugging
+    logMappingResults(headers, result);
+    
+    // Set the column mappings
+    setColumnMap(result.mappings);
   }, []);
 
-  const CANDIDATE_MAP: Record<string, string[]> = {
-    "customer_name": ["customer", "name", "account", "client"],
-    "address": ["address", "addr", "street", "road"],
-    "city": ["city", "town"],
-    "country": ["country", "nation", "cntry", "co"],
-    "tpi": [
-      "tpi", 
-      "tpi number", 
-      "tpi nummer", 
-      "tpi id", 
-      "tpi code", 
-      "tpi key", 
-      "primary key", 
-      "unique identifier", 
-      "record id",
-      "master id",
-      "customer id tpi",
-      "tpi reference",
-      "tpi ref",
-      "identifier",
-      "unique id"
-    ],
-  };
-
-  const autoMapColumns = useCallback((headers: string[]) => {
-    const detected: Record<string, string | undefined> = {};
-    LOGICAL_FIELDS.forEach(field => detected[field.key] = undefined);
-
-    // First pass: Look for TPI-specific terms (prioritize explicit TPI references)
-    headers.forEach(col => {
-      const col_n = normalize(col);
-      
-      // Check for explicit TPI references first
-      const tpiSpecificTerms = ["tpi", "tpi number", "tpi nummer", "tpi id", "tpi code", "tpi key", "tpi reference", "tpi ref"];
-      if (tpiSpecificTerms.some(hint => col_n.includes(hint)) && detected.tpi === undefined) {
-        detected.tpi = col;
-      }
-    });
-
-    // Second pass: Map other fields and remaining TPI terms
-    headers.forEach(col => {
-      const col_n = normalize(col);
-      for (const key in CANDIDATE_MAP) {
-        if (CANDIDATE_MAP[key].some(hint => col_n.includes(hint)) && detected[key] === undefined) {
-          detected[key] = col;
-        }
-      }
-    });
-
-    setColumnMap(detected as Record<string, string>);
-  }, [normalize]);
 
   const getFileRowCount = useCallback(async (file: File) => {
     try {
@@ -570,14 +523,14 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       }
       
       setColumnHeaders(headers);
-      autoMapColumns(headers);
+      performAutoMapping(headers);
     } catch (err) {
       console.error("Error extracting headers:", err);
       toast({ title: "Error", description: "Failed to extract column headers.", variant: "destructive" });
       setColumnHeaders([]);
       setColumnMap({});
     }
-  }, [toast, autoMapColumns]);
+  }, [toast, performAutoMapping]);
 
   const resetState = useCallback(() => {
     setColumnHeaders([]);
@@ -831,7 +784,14 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         element.style.borderRadius = '8px';
         element.style.transition = 'all 0.3s ease';
         
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // Scroll to show the element with more space at the top
+        element.scrollIntoView({ behavior: 'smooth', block: 'start', inline: 'nearest' });
+        
+        // Add a small delay to ensure scroll completes before any additional positioning
+        setTimeout(() => {
+          // Scroll a bit more to ensure there's space for the tour card
+          window.scrollBy({ top: -100, behavior: 'smooth' });
+        }, 300);
         
         return () => {
           // Reset styles
@@ -844,6 +804,45 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       }
     }
   }, [showInteractiveTour, tourHighlightedElement]);
+
+  // Calculate tour card position to avoid overlap
+  const getTourCardPosition = useCallback(() => {
+    if (!showInteractiveTour || !tourHighlightedElement) {
+      return 'bottom-4';
+    }
+
+    const element = document.getElementById(tourHighlightedElement);
+    if (!element) {
+      return 'bottom-4';
+    }
+
+    const rect = element.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const cardHeight = 200; // Approximate height of tour card
+    const margin = 20; // Margin between element and card
+
+    // If the highlighted element is in the bottom half of the viewport
+    // and there's not enough space below it, position the card at the top
+    if (rect.bottom > viewportHeight / 2 && (viewportHeight - rect.bottom) < (cardHeight + margin)) {
+      return 'top-4';
+    }
+
+    return 'bottom-4';
+  }, [showInteractiveTour, tourHighlightedElement]);
+
+  const [tourCardPosition, setTourCardPosition] = useState('bottom-4');
+
+  // Update tour card position when tour step changes
+  useEffect(() => {
+    if (showInteractiveTour) {
+      // Use a timeout to ensure the highlighted element has been positioned
+      const timer = setTimeout(() => {
+        setTourCardPosition(getTourCardPosition());
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showInteractiveTour, tourHighlightedElement, getTourCardPosition]);
 
   // Close help options when clicking outside
   useEffect(() => {
@@ -873,7 +872,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         <div
           className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg transition-colors
             ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/70'}
-            ${file ? 'bg-green-50 border-green-500' : ''}`}
+            ${file ? 'bg-green-50 dark:bg-green-950/20 border-green-500 dark:border-green-600' : ''}`}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -888,8 +887,8 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
           />
           {file ? (
             <div className="text-center">
-              <FileText className="w-16 h-16 mx-auto text-green-600 mb-3" />
-              <p className="font-medium text-green-700">{file.name}</p>
+              <FileText className="w-16 h-16 mx-auto text-green-600 dark:text-green-400 mb-3" />
+              <p className="font-medium text-green-700 dark:text-green-400">{file.name}</p>
               <div className="text-sm text-muted-foreground">
                 ({file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${(file.size / 1024).toFixed(2)} KB`})
                 {rowCount !== null && (
@@ -923,30 +922,30 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
                   variant="outline"
                   size="sm"
                   onClick={() => setShowHelpOptions(!showHelpOptions)}
-                  className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:from-blue-100 hover:to-indigo-100 text-blue-700 font-medium shadow-sm transition-all duration-200 hover:shadow-md"
+                  className="bg-primary/5 border-primary/20 hover:bg-primary/10 text-primary font-medium shadow-sm transition-all duration-200 hover:shadow-md"
                 >
                   <HelpCircle className="w-4 h-4 mr-2" />
                   Need Help?
                 </Button>
                 
                 {showHelpOptions && (
-                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-50 min-w-[200px]">
+                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 bg-background border border-border rounded-lg shadow-lg p-2 z-50 min-w-[200px]">
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={startInteractiveTour}
-                      className="w-full justify-start text-left hover:bg-blue-50"
+                      className="w-full justify-start text-left hover:bg-primary/10"
                     >
-                      <Play className="w-4 h-4 mr-2 text-blue-600" />
+                      <Play className="w-4 h-4 mr-2 text-primary" />
                       Interactive Tour
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={openReferenceGuide}
-                      className="w-full justify-start text-left hover:bg-green-50"
+                      className="w-full justify-start text-left hover:bg-primary/10"
                     >
-                      <BookOpen className="w-4 h-4 mr-2 text-green-600" />
+                      <BookOpen className="w-4 h-4 mr-2 text-primary" />
                       Reference Guide
                     </Button>
                   </div>
@@ -1042,7 +1041,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
                       </div>
                       
                       {useAi && (
-                        <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-md">
+                        <div className="mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-md">
                           <strong>Note:</strong> AI processing significantly increases processing time. For faster results,
                           consider using non-AI strategies and using the review card's AI recommendation feature for
                           individual rows when needed.
@@ -1050,7 +1049,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
                       )}
                       
                       {useNgram && !useAi && (
-                        <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
+                        <div className="mt-2 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/20 p-2 rounded-md">
                           <strong>Note:</strong> N-Gram processing is more thorough but takes longer than other non-AI methods.
                         </div>
                       )}
@@ -1132,6 +1131,87 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
           </div>
         )}
 
+        {/* Auto-Mapping Feedback Section */}
+        {columnHeaders.length > 0 && (
+          <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-3">
+            <h4 className="text-sm font-semibold text-foreground flex items-center">
+              <CheckCircle className="w-4 h-4 mr-2 text-green-600 dark:text-green-400" />
+              Auto-Mapping Results
+            </h4>
+            <div className="space-y-2">
+              {LOGICAL_FIELDS.map((field) => {
+                const mappedHeader = columnMap[field.key];
+                const isRequired = field.required;
+                
+                return (
+                  <div key={field.key} className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-muted-foreground">
+                      {field.label}
+                      {isRequired && <span className="text-red-500 dark:text-red-400 ml-1">*</span>}
+                    </span>
+                    <div className="flex items-center">
+                      {mappedHeader ? (
+                        <>
+                          <CheckCircle className="w-3 h-3 text-green-500 dark:text-green-400 mr-1" />
+                          <span className="text-green-700 dark:text-green-400 font-medium">"{mappedHeader}"</span>
+                        </>
+                      ) : (
+                        <>
+                          {isRequired ? (
+                            <>
+                              <X className="w-3 h-3 text-red-500 dark:text-red-400 mr-1" />
+                              <span className="text-red-600 dark:text-red-400">Required - Please map</span>
+                            </>
+                          ) : (
+                            <>
+                              <div className="w-3 h-3 rounded-full bg-muted mr-1"></div>
+                              <span className="text-muted-foreground">Not mapped</span>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Summary feedback */}
+            <div className="pt-2 border-t border-border">
+              {(() => {
+                const mappedCount = Object.values(columnMap).filter(Boolean).length;
+                const requiredMappedCount = LOGICAL_FIELDS.filter(field => 
+                  field.required && columnMap[field.key]
+                ).length;
+                const totalRequired = LOGICAL_FIELDS.filter(field => field.required).length;
+                
+                if (requiredMappedCount === totalRequired && mappedCount >= 2) {
+                  return (
+                    <div className="text-xs text-green-700 dark:text-green-400 flex items-center">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Ready to process! {mappedCount} field{mappedCount !== 1 ? 's' : ''} mapped.
+                    </div>
+                  );
+                } else if (requiredMappedCount < totalRequired) {
+                  return (
+                    <div className="text-xs text-red-600 dark:text-red-400 flex items-center">
+                      <X className="w-3 h-3 mr-1" />
+                      Please map all required fields to continue.
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="text-xs text-amber-600 dark:text-amber-400 flex items-center">
+                      <HelpCircle className="w-3 h-3 mr-1" />
+                      Map at least 2 fields to start deduplication.
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          </div>
+        )}
+
         {file && columnHeaders.length > 0 && Object.values(columnMap).filter(Boolean).length >= 2 && (
           <Button
             onClick={handleDeduplicate}
@@ -1165,53 +1245,53 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
           <div className="mt-4 space-y-4">
             <h4 className="text-lg font-semibold">Deduplication Results</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="bg-green-50 border-green-200">
+              <Card className="bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-muted-foreground">Auto Merge</p>
-                      <p className="text-2xl font-bold text-green-700">{deduplicationResults.results.kpi_metrics.auto_merge}</p>
+                      <p className="text-2xl font-bold text-green-700 dark:text-green-400">{deduplicationResults.results.kpi_metrics.auto_merge}</p>
                     </div>
-                    <Merge className="h-8 w-8 text-green-500" />
+                    <Merge className="h-8 w-8 text-green-500 dark:text-green-400" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">High confidence matches (≥98%)</p>
                 </CardContent>
               </Card>
 
-              <Card className="bg-yellow-50 border-yellow-200">
+              <Card className="bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-muted-foreground">Needs Review</p>
-                      <p className="text-2xl font-bold text-yellow-700">{deduplicationResults.results.kpi_metrics.needs_review}</p>
+                      <p className="text-2xl font-bold text-yellow-700 dark:text-yellow-400">{deduplicationResults.results.kpi_metrics.needs_review}</p>
                     </div>
-                    <Eye className="h-8 w-8 text-yellow-500" />
+                    <Eye className="h-8 w-8 text-yellow-500 dark:text-yellow-400" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Medium confidence matches (90-97%)</p>
                 </CardContent>
               </Card>
 
-              <Card className="bg-blue-50 border-blue-200">
+              <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-muted-foreground">Needs AI Analysis</p>
-                      <p className="text-2xl font-bold text-blue-700">{deduplicationResults.results.kpi_metrics.needs_ai}</p>
+                      <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{deduplicationResults.results.kpi_metrics.needs_ai}</p>
                     </div>
-                    <Brain className="h-8 w-8 text-blue-500" />
+                    <Brain className="h-8 w-8 text-blue-500 dark:text-blue-400" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Low confidence matches (&lt;90%)</p>
                 </CardContent>
               </Card>
 
-              <Card className="bg-purple-50 border-purple-200">
+              <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-muted-foreground">Total Duplicates</p>
-                      <p className="text-2xl font-bold text-purple-700">{deduplicationResults.results.total_potential_duplicates}</p>
+                      <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{deduplicationResults.results.total_potential_duplicates}</p>
                     </div>
-                    <Users className="h-8 w-8 text-purple-500" />
+                    <Users className="h-8 w-8 text-purple-500 dark:text-purple-400" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">Total potential matches found</p>
                 </CardContent>
@@ -1226,15 +1306,15 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     {showInteractiveTour && (
       <div className="fixed inset-0 z-50 bg-black bg-opacity-50 backdrop-blur-sm">
         {/* Tour Step Card */}
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-52 max-w-md w-full mx-4">
-          <Card className="shadow-2xl border-blue-200">
+        <div className={`fixed ${tourCardPosition} left-1/2 transform -translate-x-1/2 z-52 max-w-md w-full mx-4`}>
+          <Card className="shadow-2xl border-primary/20 bg-background">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
                     Step {currentTourStep + 1} of {TOUR_STEPS.length}
                   </Badge>
-                  <h3 className="font-semibold text-gray-900">{TOUR_STEPS[currentTourStep].title}</h3>
+                  <h3 className="font-semibold text-foreground">{TOUR_STEPS[currentTourStep].title}</h3>
                 </div>
                 <Button variant="ghost" size="sm" onClick={closeTour}>
                   <X className="w-4 h-4" />
@@ -1242,7 +1322,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <p className="text-gray-700 mb-4">{TOUR_STEPS[currentTourStep].content}</p>
+              <p className="text-muted-foreground mb-4">{TOUR_STEPS[currentTourStep].content}</p>
               <div className="flex justify-between items-center">
                 <Button
                   variant="outline"
@@ -1258,7 +1338,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
                     <div
                       key={index}
                       className={`w-2 h-2 rounded-full ${
-                        index === currentTourStep ? 'bg-blue-500' : 'bg-gray-300'
+                        index === currentTourStep ? 'bg-primary' : 'bg-muted'
                       }`}
                     />
                   ))}
@@ -1267,7 +1347,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
                   variant="default"
                   size="sm"
                   onClick={nextTourStep}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="bg-primary hover:bg-primary/90"
                 >
                   {currentTourStep === TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}
                   {currentTourStep !== TOUR_STEPS.length - 1 && <ChevronRight className="w-4 h-4 ml-1" />}
@@ -1283,12 +1363,12 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     {showReferenceGuide && (
       <div className="fixed inset-0 z-50 flex">
         {/* Side Panel - No backdrop, just the panel */}
-        <div className="ml-auto w-1/2 min-w-[500px] max-w-[800px] bg-white shadow-2xl overflow-hidden flex flex-col border-l border-gray-200">
+        <div className="ml-auto w-1/2 min-w-[500px] max-w-[800px] bg-background shadow-2xl overflow-hidden flex flex-col border-l border-border">
           {/* Header */}
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-200 p-4 flex items-center justify-between">
+          <div className="bg-primary/5 border-b border-border p-4 flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 text-green-600" />
-              <h2 className="text-lg font-semibold text-green-800">Master Data Cleansing Help Guide</h2>
+              <BookOpen className="w-5 h-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Master Data Cleansing Help Guide</h2>
             </div>
             <Button variant="ghost" size="sm" onClick={closeReferenceGuide}>
               <X className="w-4 h-4" />
@@ -1296,8 +1376,8 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
           </div>
           
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 bg-white">
-            <div className="prose prose-sm max-w-none">
+          <div className="flex-1 overflow-y-auto p-6 bg-background">
+            <div className="prose prose-sm max-w-none dark:prose-invert">
               {renderMarkdown(HELP_GUIDE_CONTENT)}
             </div>
           </div>

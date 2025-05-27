@@ -186,7 +186,7 @@ export function CardReviewModal({ pair, recordName, isOpen, onClose, onResolve }
                   <X className="w-4 h-4 mr-2" />
                   Not a Duplicate
                 </Button>
-                <Button onClick={() => onResolve(pair.id, pair.record1.name, 'duplicate')} className="flex-1 bg-green-600 hover:bg-green-700 text-white">
+                <Button onClick={() => onResolve(pair.id, pair.record1.name, 'duplicate')} className="flex-1 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white">
                   <Check className="w-4 h-4 mr-2" />
                   Mark as Duplicate
                 </Button>

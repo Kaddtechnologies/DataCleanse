@@ -7,9 +7,8 @@ import { FileUpload } from '@/components/file-upload';
 import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
-import { AiAnalysisNotification } from '@/components/ai-analysis-display';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, BrainCircuit, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -39,7 +38,6 @@ export default function HomePage() {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const { toast } = useToast();
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
-  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [isBulkMerging, setIsBulkMerging] = useState(false);
   const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
   const [pairsToMerge, setPairsToMerge] = useState<DuplicatePair[]>([]);
@@ -175,7 +173,7 @@ export default function HomePage() {
   
   const handleExport = (format: 'csv' | 'excel') => {
     console.log(`Exporting data to ${format}...`, duplicateData);
-    toast({title: "Export Initiated (Mock)", description: `Data will be prepared for ${format.toUpperCase()} download.`});
+    toast({title: "Export Initiated", description: `Data will be prepared for ${format.toUpperCase()} download.`});
   };
 
   const handleToggleRowSelection = (pairId: string) => {
@@ -197,52 +195,6 @@ export default function HomePage() {
     } else {
       setSelectedRowIds(new Set(duplicateData.map(pair => pair.id)));
     }
-  };
-
-  const handleBulkAiAnalyze = async () => {
-    if (selectedRowIds.size === 0) {
-      toast({ title: "No Rows Selected", description: "Please select rows to analyze.", variant: "destructive" });
-      return;
-    }
-
-    setIsBulkProcessing(true);
-    toast({ title: "Bulk AI Analysis Started", description: `Processing ${selectedRowIds.size} selected pair(s).` });
-
-    // Create a temporary array for updates to avoid multiple state updates in a loop
-    let updatedData = [...duplicateData];
-    let successCount = 0;
-    let errorCount = 0;
-
-    for (const pairId of selectedRowIds) {
-      const pairIndex = updatedData.findIndex(p => p.id === pairId);
-      if (pairIndex !== -1) {
-        const pairToAnalyze = updatedData[pairIndex];
-        // Destructure to match fetchAiAnalysisForPair's expected input
-        const { id, record1, record2, similarityScore } = pairToAnalyze;
-        const aiData = await fetchAiAnalysisForPair({ id, record1, record2, similarityScore });
-        
-        if (aiData.aiConfidence && aiData.aiConfidence !== 'Error') {
-          successCount++;
-        } else if (aiData.aiConfidence === 'Error') {
-          errorCount++;
-        }
-        updatedData[pairIndex] = { ...updatedData[pairIndex], ...aiData };
-      }
-    }
-
-    setDuplicateData(updatedData);
-    setIsBulkProcessing(false);
-    setSelectedRowIds(new Set()); 
-    
-    let summaryMessage = `Bulk analysis complete. ${successCount} pair(s) successfully analyzed.`;
-    if (errorCount > 0) {
-      summaryMessage += ` ${errorCount} pair(s) encountered errors.`;
-    }
-    toast({ 
-      title: "Bulk AI Analysis Finished", 
-      description: summaryMessage,
-      variant: errorCount > 0 ? "destructive" : "default"
-    });
   };
 
   const handleBulkMerge = () => {
@@ -327,59 +279,20 @@ export default function HomePage() {
                 <CardTitle className="text-xl">Bulk Actions</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* AI Analysis Section */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground">AI Analysis</h3>
-                    <div className="flex flex-wrap items-center gap-4">
-                      <Button
-                        onClick={handleBulkAiAnalyze}
-                        disabled={selectedRowIds.size === 0 || isBulkProcessing}
-                        variant="outline"
-                      >
-                        {isBulkProcessing ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <BrainCircuit className="mr-2 h-4 w-4" />
-                        )}
-                        {isBulkProcessing ? `Analyzing ${selectedRowIds.size} selected...` : `Analyze Selected (${selectedRowIds.size})`}
-                      </Button>
-                      {selectedRowIds.size > 0 && !isBulkProcessing && (
-                        <p className="text-sm text-muted-foreground">
-                          {selectedRowIds.size} {selectedRowIds.size === 1 ? 'pair' : 'pairs'} ready for AI analysis.
-                        </p>
-                      )}
-                      {selectedRowIds.size === 0 && !isBulkProcessing && (
-                        <p className="text-sm text-muted-foreground">
-                          Select rows in the table below to begin.
-                        </p>
-                      )}
-                    </div>
-                    <div className="mt-2">
-                      <AiAnalysisNotification />
-                    </div>
-                  </div>
-
-                  {/* Merge Actions Section */}
-                  <div className="space-y-4">
-                    <h3 className="text-sm font-medium text-muted-foreground">Auto-Merge High Confidence</h3>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="bg-green-500 hover:bg-green-600"
-                        onClick={handleBulkMerge}
-                        disabled={isBulkMerging}
-                      >
-                        {isBulkMerging ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
-                        Merge High Confidence Pairs
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Automatically merge duplicate entries with both high AI confidence and ≥98% similarity score.
-                      All other confidence levels require manual review.
-                    </p>
-                  </div>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Automatically merge duplicate entries with both high AI confidence and ≥98% similarity score.
+                  </p>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="bg-green-500 hover:bg-green-600"
+                    onClick={handleBulkMerge}
+                    disabled={isBulkMerging}
+                  >
+                    {isBulkMerging ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
+                    Merge High Confidence Pairs
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -396,10 +309,10 @@ export default function HomePage() {
               />
              
             </section>
-            <section aria-labelledby="export-actions-heading" className="mt-8">
+            {/* <section aria-labelledby="export-actions-heading" className="mt-8">
               <h2 id="export-actions-heading" className="sr-only">Export Actions</h2>
               <DataExportActions onExport={handleExport} hasData={duplicateData.length > 0} />
-            </section>
+            </section> */}
           </>
         )}
         

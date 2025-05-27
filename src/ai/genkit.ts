@@ -1,6 +1,7 @@
 import { genkit } from 'genkit';
 import { azureOpenAI, gpt41Nano, gpt4o } from 'genkitx-azure-openai'; 
 import { environment } from '../../environment';
+import { anthropic, claude35Sonnet, claude3Haiku } from 'genkitx-anthropic';
 
 
 export const deduplicationPrompt = `
@@ -21,7 +22,8 @@ Guidelines for confidence scoring:
 - 0.5-0.7: Possible duplicate (significant differences, but could be the same entity)
 - 0.0-0.5: Unlikely to be a duplicate (major differences, likely different entities)
 
-For each entry, provide:
+For each entry, provide a clear and concise explanation of your confidence assessment.
+Do not over explain, but do not be too concise.
 1. WHAT: Clear description of the comparison and key differences found
 2. WHY: Detailed reasoning for your confidence assessment
 3. RECOMMENDATION: Specific actions or areas needing attention
@@ -56,7 +58,8 @@ export const ai = genkit({
       apiKey: process.env.OPENAI_API_KEY,
       endpoint: environment.azureOpenAiEndpoint,
        apiVersion: environment.openAiApiVersion,
+       deployment: environment.azureOpenAiDeploymentName
     }),
-  ],  
+  ]  ,
   model: gpt4o
 });

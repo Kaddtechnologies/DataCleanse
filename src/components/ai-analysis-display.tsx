@@ -178,7 +178,7 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore }: AiAnalysisDi
 export function AiAnalysisNotification() {
   return (
     <div className="mt-4 p-4 bg-primary/10 border border-primary/20 rounded-md text-center">
-      <p className="text-sm text-primary-foreground">
+      <p className="text-sm">
         <Info className="w-4 h-4 inline-block mr-2" />
         Click the <strong>Review</strong> button on any potential duplicate to see detailed AI analysis and explanation.
       </p>

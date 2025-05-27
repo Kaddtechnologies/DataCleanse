@@ -1,14 +1,14 @@
-import type { Metadata } from 'next';
-import { GeistSans } from 'geist/font/sans';
-import './globals.css';
+import type { Metadata } from "next";
+import Script from "next/script";
+import { GeistSans } from "geist/font/sans";
+import "./globals.css";
+
+import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 
-// The GeistSans object from 'geist/font/sans' directly provides the .variable class
-// No need to call it as a function or specify subsets here.
-
 export const metadata: Metadata = {
-  title: 'DataCleanse - Customer Deduplication',
-  description: 'Identify and manage duplicate customer records with DataCleanse.',
+  title: "DataCleanse - Customer Deduplication",
+  description: "Identify and manage duplicate customer records with DataCleanse.",
 };
 
 export default function RootLayout({
@@ -18,9 +18,26 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={GeistSans.variable}>
-      <body className={`font-sans antialiased`}> {/* font-sans in globals.css will use the --font-geist-sans variable */}
-        {children}
-        <Toaster />
+      <head>
+        {/* Prevent flash‐of‐incorrect‐theme before React hydration */}
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`(() => {
+  try {
+    const storageKey = 'dc-theme';
+    const stored = localStorage.getItem(storageKey);
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (stored === 'dark' || (!stored && prefersDark)) {
+      document.documentElement.classList.add('dark');
+    }
+  } catch (_) {}
+})();`}
+        </Script>
+      </head>
+      <body className="font-sans antialiased transition-colors duration-300">
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );
