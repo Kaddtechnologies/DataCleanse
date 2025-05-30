@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search, Download, Loader2, FileText } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2 } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -21,7 +21,6 @@ import {
   getFilteredRowModel,
   getPaginationRowModel,
 } from "@tanstack/react-table";
-import { exportDecisionAwareHtml } from '@/utils/decision-aware-html-export';
 
 interface DataTablePaginationProps {
   table: any;
@@ -358,43 +357,6 @@ export function InteractiveDataGrid({
     }
   };
 
-
-  //Function to export decision report as html
-  const handleExportDecisionReport = async () => {
-    if (!data || data.length === 0 || isExporting) return;
-    
-    setIsExporting(true);
-    
-    try {
-      // Get the filtered data from the table (same as your current export)
-      const filteredRows = table.getFilteredRowModel().rows;
-      const filteredData = filteredRows.map(row => row.original);
-      
-      if (filteredData.length === 0) {
-        setIsExporting(false);
-        return;
-      }
-      
-      // Export with decision awareness
-      await exportDecisionAwareHtml(
-        data, // All data
-        filteredData, // Filtered data from table
-        {
-          globalFilter,
-          statusFilter: 'all', // You can add status filtering if needed
-          confidenceFilter: 'all', // You can add confidence filtering if needed
-          showInstructions: true
-        }
-      );
-      
-      setIsExporting(false);
-    } catch (error) {
-      console.error("Error exporting decision report:", error);
-      setIsExporting(false);
-    }
-  };
-  
-
   if (!data) {
     return (
       <Card className="shadow-lg">
@@ -425,57 +387,24 @@ export function InteractiveDataGrid({
     <Card className="shadow-lg">
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">Potential Duplicates Review</CardTitle>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
             Showing {filteredData.length} of {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
             {statusFilter !== "all" && ` (Status: ${statusFilter})`}
             {confidenceFilter !== "all" && ` (Confidence: ${confidenceFilter})`}
           </p>
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:space-x-2">
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportToExcel}
-                disabled={!data || data.length === 0 || isExporting}
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Exporting...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4 mr-2" /> Export to Excel
-                  </>
-                )}
-              </Button>
-              {/* NEW: Decision Report button */}
-                <Button 
-                  variant="default" 
-                  size="sm" 
-                  onClick={handleExportDecisionReport} 
-                  disabled={!data || data.length === 0 || isExporting}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {isExporting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generating Report...
-                    </>
-                  ) : (
-                    <>
-                      <FileText className="w-4 h-4 mr-2" /> Export Decision Report
-                    </>
-                  )}
-                </Button>
+          
+          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
+            {/* Search Input */}
             <Input
-                placeholder="Search all columns..."
-                value={globalFilter ?? ""}
-                onChange={(event) => setGlobalFilter(event.target.value)}
-                className="max-w-sm"
-              />
-            </div>
+              placeholder="Search all columns..."
+              value={globalFilter ?? ""}
+              onChange={(event) => setGlobalFilter(event.target.value)}
+              className="w-full sm:w-64"
+            />
             
-            <div className="flex items-center space-x-2">
+            {/* Filter Controls */}
+            <div className="flex items-center gap-2">
               <Select
                 value={statusFilter}
                 onValueChange={setStatusFilter}
@@ -497,7 +426,7 @@ export function InteractiveDataGrid({
                 value={confidenceFilter}
                 onValueChange={setConfidenceFilter}
               >
-                <SelectTrigger className="h-8 w-[130px]">
+                <SelectTrigger className="h-8 w-[150px]">
                   <SelectValue placeholder="Confidence" />
                 </SelectTrigger>
                 <SelectContent>

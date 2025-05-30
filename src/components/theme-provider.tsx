@@ -36,10 +36,18 @@ function getInitialTheme(): Theme {
  * provides a hook, and persists the user's preference.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // The function form avoids hydration mismatch warnings
-  const [theme, setThemeState] = React.useState<Theme>(() =>
-    typeof window === "undefined" ? "light" : getInitialTheme()
-  );
+  // Always start with "light" to avoid hydration mismatch
+  const [theme, setThemeState] = React.useState<Theme>("light");
+
+  // Read the actual theme preference after hydration
+  React.useEffect(() => {
+    const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
+    const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+    const actualTheme = stored ?? systemTheme;
+    setThemeState(actualTheme);
+  }, []);
 
   // Apply/remove class and persist whenever theme changes
   React.useEffect(() => {

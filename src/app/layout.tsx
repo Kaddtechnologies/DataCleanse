@@ -17,7 +17,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={GeistSans.variable}>
+    <html lang="en" className={GeistSans.variable} suppressHydrationWarning={true}>
       <head>
         {/* Prevent flash‐of‐incorrect‐theme before React hydration */}
         <Script id="theme-init" strategy="beforeInteractive">

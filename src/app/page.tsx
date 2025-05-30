@@ -8,7 +8,7 @@ import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Loader2, CheckCircle, AlertTriangle, FileText } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ import {
 import { analyzeDuplicateConfidence, type AnalyzeDuplicateConfidenceOutput } from '@/ai/flows/analyze-duplicate-confidence';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { exportDecisionAwareHtml } from '@/utils/decision-aware-html-export';
 
 
 const transformRecordForAI = (record: CustomerRecord): Record<string, string> => {
@@ -41,6 +42,8 @@ export default function HomePage() {
   const [isBulkMerging, setIsBulkMerging] = useState(false);
   const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
   const [pairsToMerge, setPairsToMerge] = useState<DuplicatePair[]>([]);
+  const [hasBulkMergedThisSession, setHasBulkMergedThisSession] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const fetchAiAnalysisForPair = async (pairInput: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>): Promise<Partial<DuplicatePair>> => {
     // Decide if AI analysis should run (e.g., based on score or if not already analyzed)
@@ -66,6 +69,7 @@ export default function HomePage() {
   const handleFileProcessed = async (apiResponse: any) => {
     setIsLoadingData(true);
     setSelectedRowIds(new Set()); // Clear selection on new file
+    setHasBulkMergedThisSession(false); // Reset bulk merge flag for new upload
 
     try {
       // Check if duplicates array exists and has items
@@ -242,6 +246,7 @@ export default function HomePage() {
     setDuplicateData(updatedData);
     setIsBulkMerging(false);
     setPairsToMerge([]);
+    setHasBulkMergedThisSession(true); // Mark that bulk merge has been performed
     
     toast({
       title: "Bulk Merge Complete",
@@ -253,6 +258,31 @@ export default function HomePage() {
   const cancelBulkMerge = () => {
     setShowMergeConfirmation(false);
     setPairsToMerge([]);
+  };
+
+  const handleExportDecisionReport = async () => {
+    if (!duplicateData || duplicateData.length === 0 || isExporting) return;
+    
+    setIsExporting(true);
+    
+    try {
+      // Export all data for decision report
+      await exportDecisionAwareHtml(
+        duplicateData, // All data
+        duplicateData, // Use all data since we're not filtering from this level
+        {
+          globalFilter: '',
+          statusFilter: 'all',
+          confidenceFilter: 'all',
+          showInstructions: true
+        }
+      );
+      
+      setIsExporting(false);
+    } catch (error) {
+      console.error("Error exporting decision report:", error);
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -274,24 +304,83 @@ export default function HomePage() {
 
         {!isLoadingData && duplicateData.length > 0 && (
           <>
-            <Card className="mb-6 shadow-md">
-              <CardHeader>
-                <CardTitle className="text-xl">Bulk Actions</CardTitle>
+            <Card className="mb-6 shadow-lg border-2">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-semibold flex items-center gap-2">
+                  <CheckCircle className="h-5 w-5 text-primary" />
+                  Bulk Actions
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Perform actions on multiple records or generate reports from your duplicate analysis.
+                </p>
               </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Automatically merge duplicate entries with both high AI confidence and ≥98% similarity score.
-                  </p>
+              <CardContent className="space-y-4">
+                {/* Merge Section */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-sm mb-1">Automatic Merge</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically merge duplicate entries with both high AI confidence and ≥98% similarity score.
+                    </p>
+                    {hasBulkMergedThisSession && (
+                      <div className="flex items-center gap-1 mt-2">
+                        <CheckCircle className="h-3 w-3 text-green-600" />
+                        <span className="text-xs text-green-600 font-medium">Bulk merge completed for this upload</span>
+                      </div>
+                    )}
+                  </div>
                   <Button
                     variant="default"
                     size="sm"
-                    className="bg-green-500 hover:bg-green-600"
+                    className="bg-green-600 hover:bg-green-700 text-white shadow-sm px-4 py-2 font-medium"
                     onClick={handleBulkMerge}
-                    disabled={isBulkMerging}
+                    disabled={isBulkMerging || hasBulkMergedThisSession}
                   >
-                    {isBulkMerging ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <CheckCircle className="mr-1 h-3 w-3" />}
-                    Merge High Confidence Pairs
+                    {isBulkMerging ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Merging...
+                      </>
+                    ) : hasBulkMergedThisSession ? (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Merge Complete
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Merge High Confidence Pairs
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Export Section */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border">
+                  <div className="flex-1">
+                    <h3 className="font-medium text-sm mb-1">Decision Report</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Generate a comprehensive HTML report showing all decisions made during the deduplication process.
+                    </p>
+                  </div>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm px-4 py-2 font-medium"
+                    onClick={handleExportDecisionReport}
+                    disabled={!duplicateData || duplicateData.length === 0 || isExporting}
+                  >
+                    {isExporting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Generating Report...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="mr-2 h-4 w-4" />
+                        Export Decision Report
+                      </>
+                    )}
                   </Button>
                 </div>
               </CardContent>
