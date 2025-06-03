@@ -262,28 +262,54 @@ export function InteractiveDataGrid({
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }) => (
-        <div className="text-center">
-          <Badge
-            variant={row.original.similarityScore > 0.8 ? "default" : row.original.similarityScore > 0.6 ? "secondary" : "destructive"}
-            className={
-              row.original.similarityScore > 0.8 ? "bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700" : 
-              row.original.similarityScore > 0.6 ? "bg-yellow-500 dark:bg-yellow-600 hover:bg-yellow-600 dark:hover:bg-yellow-700 text-black dark:text-white" : ""
-            }
-          >
-            {(row.original.similarityScore * 100).toFixed(0)}%
-          </Badge>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const originalScore = row.original.originalScore || (row.original.similarityScore * 100);
+        const enhancedScore = row.original.enhancedScore || originalScore;
+        const isEnhanced = row.original.enhancedScore && Math.abs(enhancedScore - originalScore) >= 1;
+        
+        return (
+          <div className="text-center">
+            <div className="flex flex-col items-center gap-1">
+              <Badge
+                variant={enhancedScore > 80 ? "default" : enhancedScore > 60 ? "secondary" : "destructive"}
+                className={
+                  enhancedScore > 80 ? "bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700" : 
+                  enhancedScore > 60 ? "bg-yellow-500 dark:bg-yellow-600 hover:bg-yellow-600 dark:hover:bg-yellow-700 text-black dark:text-white" : ""
+                }
+              >
+                {enhancedScore.toFixed(0)}%
+              </Badge>
+              {isEnhanced && (
+                <span className="text-xs text-muted-foreground" title={`Original: ${originalScore.toFixed(0)}% → Enhanced: ${enhancedScore.toFixed(0)}%`}>
+                  {enhancedScore > originalScore ? '↑ Enhanced' : '↓ Adjusted'}
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "aiConfidence",
       header: "AI Confidence",
-      cell: ({ row }) => (
-        <div className="text-center">
-          <AiConfidenceBadge confidence={row.original.aiConfidence} />
-        </div>
-      ),
+      cell: ({ row }) => {
+        // Prioritize enhanced confidence over original AI confidence
+        const confidence = row.original.enhancedConfidence || row.original.aiConfidence;
+        const isEnhanced = !!row.original.enhancedConfidence;
+        
+        return (
+          <div className="text-center">
+            <div className="flex flex-col items-center gap-1">
+              <AiConfidenceBadge confidence={confidence} />
+              {isEnhanced && (
+                <span className="text-xs text-blue-600 font-medium" title="Confidence enhanced by smart business rules">
+                  Smart Enhanced
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "status",

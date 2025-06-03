@@ -74,7 +74,7 @@ function openBrowser(url) {
   // Start Next.js development server
   const nextProcess = spawn(
     'npx',
-    ['next', 'dev', '--turbopack', '-p', String(port)],
+    ['next', 'dev', '-p', String(port)],
     { stdio: 'inherit', shell: true }
   );
 

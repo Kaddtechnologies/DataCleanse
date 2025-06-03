@@ -63,9 +63,18 @@ function calculateExportStats(exportData: DuplicatePair[], allData: DuplicatePai
   return {
     totalPairs: allData.length,
     processedPairs,
-    highConfidence: exportData.filter(pair => pair.similarityScore >= 0.98).length,
-    mediumConfidence: exportData.filter(pair => pair.similarityScore >= 0.90 && pair.similarityScore < 0.98).length,
-    lowConfidence: exportData.filter(pair => pair.similarityScore < 0.90).length,
+    highConfidence: exportData.filter(pair => {
+      const score = pair.enhancedScore || (pair.similarityScore * 100);
+      return score >= 98;
+    }).length,
+    mediumConfidence: exportData.filter(pair => {
+      const score = pair.enhancedScore || (pair.similarityScore * 100);
+      return score >= 90 && score < 98;
+    }).length,
+    lowConfidence: exportData.filter(pair => {
+      const score = pair.enhancedScore || (pair.similarityScore * 100);
+      return score < 90;
+    }).length,
     merged: exportData.filter(pair => pair.status === 'merged' || pair.status === 'duplicate').length,
     notDuplicate: exportData.filter(pair => pair.status === 'not_duplicate').length,
     skipped: exportData.filter(pair => pair.status === 'skipped').length,
@@ -78,9 +87,18 @@ function calculateExportStats(exportData: DuplicatePair[], allData: DuplicatePai
  */
 function groupDataByConfidenceAndStatus(data: DuplicatePair[]) {
   const groups = {
-    highConfidence: data.filter(pair => pair.similarityScore >= 0.98),
-    mediumConfidence: data.filter(pair => pair.similarityScore >= 0.90 && pair.similarityScore < 0.98),
-    lowConfidence: data.filter(pair => pair.similarityScore < 0.90),
+    highConfidence: data.filter(pair => {
+      const score = pair.enhancedScore || (pair.similarityScore * 100);
+      return score >= 98;
+    }),
+    mediumConfidence: data.filter(pair => {
+      const score = pair.enhancedScore || (pair.similarityScore * 100);
+      return score >= 90 && score < 98;
+    }),
+    lowConfidence: data.filter(pair => {
+      const score = pair.enhancedScore || (pair.similarityScore * 100);
+      return score < 90;
+    }),
   };
 
   // Sort each group by status (processed decisions first)
@@ -324,8 +342,10 @@ function generateDataTable(data: DuplicatePair[], confidenceLevel: string): stri
                 <th class="duplicate-record">Duplicate Address</th>
                 <th class="duplicate-record">Duplicate TPI</th>
                 <th class="decision-columns">Your Decision</th>
-                <th class="decision-columns">Similarity %</th>
+                <th class="decision-columns">Original Score %</th>
+                <th class="decision-columns">Enhanced Score %</th>
                 <th class="decision-columns">AI Confidence</th>
+                <th class="decision-columns">Score Change</th>
                 <th class="decision-columns">SAP S/4 Action</th>
             </tr>
         </thead>
@@ -335,6 +355,20 @@ function generateDataTable(data: DuplicatePair[], confidenceLevel: string): stri
   const tableRows = data.map((pair, index) => {
     const rowClass = pair.status === 'pending' ? 'pending' : 'processed';
     const sapAction = getSapS4Action(pair.status);
+    
+    // Use enhanced score if available, otherwise use similarity score
+    const originalScore = pair.originalScore || (pair.similarityScore * 100);
+    const enhancedScore = pair.enhancedScore || originalScore;
+    const scoreDifference = enhancedScore - originalScore;
+    
+    let scoreChangeDisplay = "No Enhancement";
+    if (pair.enhancedScore && Math.abs(scoreDifference) >= 1) {
+      if (scoreDifference > 0) {
+        scoreChangeDisplay = `+${scoreDifference.toFixed(1)} pts (Enhanced)`;
+      } else {
+        scoreChangeDisplay = `${scoreDifference.toFixed(1)} pts (Reduced)`;
+      }
+    }
     
     return `
             <tr class="${rowClass}">
@@ -346,8 +380,10 @@ function generateDataTable(data: DuplicatePair[], confidenceLevel: string): stri
                 <td class="duplicate-record">${pair.record2.address || ''}</td>
                 <td class="duplicate-record">${pair.record2.tpi || 'Missing'}</td>
                 <td class="decision-columns"><strong>${getStatusDisplayName(pair.status)}</strong></td>
-                <td class="decision-columns">${Math.round(pair.similarityScore * 100)}%</td>
-                <td class="decision-columns">${pair.aiConfidence || '-'}</td>
+                <td class="decision-columns">${originalScore.toFixed(1)}%</td>
+                <td class="decision-columns">${enhancedScore.toFixed(1)}%</td>
+                <td class="decision-columns">${pair.enhancedConfidence || pair.aiConfidence || '-'}</td>
+                <td class="decision-columns">${scoreChangeDisplay}</td>
                 <td class="decision-columns">${sapAction}</td>
             </tr>
     `;

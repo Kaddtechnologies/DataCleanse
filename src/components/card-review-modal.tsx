@@ -15,6 +15,15 @@ interface CardReviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   onResolve: (pairId: string, recordName: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => void;
+  onAnalyzeConfidence?: (record1: Record<string, string>, record2: Record<string, string>, fuzzyScore: number) => Promise<any>;
+  onEnhancedAnalysisComplete?: (pairId: string, enhancedResults: {
+    enhancedConfidence: string;
+    enhancedScore: number;
+    originalScore: number;
+    scoreChangeReason: string;
+    lastAnalyzed: string;
+  }) => void;
+  onCacheAnalysis?: (pairId: string, analysis: any) => void;
 }
 
 const RecordDetail = ({ icon: Icon, label, value, showIfEmpty = false }: {
@@ -81,9 +90,9 @@ const CustomerRecordCard = ({ record, title }: { record: CustomerRecord, title: 
           icon={ConfidenceIcon}
           label="Low Confidence"
           value={record.isLowConfidence !== undefined ? (record.isLowConfidence ? "Yes" : "No") : null}
-          showIfEmpty={true}
+          showIfEmpty={false}
         />
-        <RecordDetail icon={ConfidenceIcon} label="LLM Confidence" value={record.llm_conf} showIfEmpty={true} />
+        <RecordDetail icon={ConfidenceIcon} label="LLM Confidence" value={record.llm_conf} showIfEmpty={false} />
         
         {/* Display any other fields not explicitly handled */}
         {Object.entries(record)
@@ -148,7 +157,16 @@ const ConfidenceIcon = (props: React.SVGProps<SVGSVGElement>) => (
 );
 
 
-export function CardReviewModal({ pair, recordName, isOpen, onClose, onResolve }: CardReviewModalProps) {
+export function CardReviewModal({ 
+  pair, 
+  recordName, 
+  isOpen, 
+  onClose, 
+  onResolve, 
+  onAnalyzeConfidence,
+  onEnhancedAnalysisComplete,
+  onCacheAnalysis
+}: CardReviewModalProps) {
   if (!pair) return null;
 
   return (
@@ -173,15 +191,19 @@ export function CardReviewModal({ pair, recordName, isOpen, onClose, onResolve }
             <AiAnalysisDisplay 
               record1={pair.record1} 
               record2={pair.record2} 
-              fuzzyScore={pair.similarityScore} 
+              fuzzyScore={pair.similarityScore}
+              analyzeFunction={onAnalyzeConfidence}
+              onAnalysisComplete={onEnhancedAnalysisComplete ? (results) => onEnhancedAnalysisComplete(pair.id, results) : undefined}
+              cachedAnalysis={pair.cachedAiAnalysis}
+              onCacheAnalysis={onCacheAnalysis ? (analysis) => onCacheAnalysis(pair.id, analysis) : undefined}
             />
 
-            <DialogFooter className="mt-8 gap-2 md:gap-0">
-              <Button variant="outline" onClick={() => onResolve(pair.id, pair.record1.name, 'skipped')} className="w-full md:w-auto">
+            <div className="mt-8 flex flex-col sm:flex-row justify-between gap-4">
+              <Button variant="outline" onClick={() => onResolve(pair.id, pair.record1.name, 'skipped')} className="w-full sm:w-auto">
                 <SkipForwardIcon className="w-4 h-4 mr-2" />
                 Skip
               </Button>
-              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <Button variant="destructive" onClick={() => onResolve(pair.id, pair.record1.name, 'not_duplicate')} className="flex-1">
                   <X className="w-4 h-4 mr-2" />
                   Not a Duplicate
@@ -191,7 +213,7 @@ export function CardReviewModal({ pair, recordName, isOpen, onClose, onResolve }
                   Mark as Duplicate
                 </Button>
               </div>
-            </DialogFooter>
+            </div>
           </div>
         </ScrollArea>
          {/* <DialogClose asChild>

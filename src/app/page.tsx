@@ -17,10 +17,10 @@ import {
   DialogDescription,
   DialogFooter
 } from "@/components/ui/dialog";
-import { analyzeDuplicateConfidence, type AnalyzeDuplicateConfidenceOutput } from '@/ai/flows/analyze-duplicate-confidence';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { exportDecisionAwareHtml } from '@/utils/decision-aware-html-export';
+import { type AnalyzeDuplicateConfidenceOutput } from '@/ai/flows/analyze-duplicate-confidence';
 
 
 const transformRecordForAI = (record: CustomerRecord): Record<string, string> => {
@@ -51,12 +51,24 @@ export default function HomePage() {
     // The original logic to run only for borderline for demo can be kept or adjusted.
     // if (pairInput.similarityScore < 0.9 && pairInput.similarityScore > 0.6) { // Original condition
     try {
-      const aiResult = await analyzeDuplicateConfidence({
-        record1: transformRecordForAI(pairInput.record1),
-        record2: transformRecordForAI(pairInput.record2),
-        fuzzyScore: pairInput.similarityScore,
+      const response = await fetch('/api/analyze-confidence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          record1: transformRecordForAI(pairInput.record1),
+          record2: transformRecordForAI(pairInput.record2),
+          fuzzyScore: pairInput.similarityScore,
+        }),
       });
-      return { aiConfidence: aiResult.confidenceLevel, aiReasoning: aiResult.reasoning };
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const aiResult = await response.json();
+      return { aiConfidence: aiResult.confidenceLevel, aiReasoning: aiResult.why };
     } catch (error) {
       console.error(`AI analysis failed for pair ${pairInput.id}:`, error);
       // Return an error state for this specific pair
@@ -285,6 +297,68 @@ export default function HomePage() {
     }
   };
 
+  // Enhanced AI analysis function wrapper for the modal
+  const handleAnalyzeConfidence = async (record1: Record<string, string>, record2: Record<string, string>, fuzzyScore: number) => {
+    try {
+      const response = await fetch('/api/analyze-confidence', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          record1,
+          record2,
+          fuzzyScore,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error("AI analysis error:", error);
+      throw error;
+    }
+  };
+
+  // Handle enhanced analysis results and update the duplicate data
+  const handleEnhancedAnalysisComplete = (pairId: string, enhancedResults: {
+    enhancedConfidence: string;
+    enhancedScore: number;
+    originalScore: number;
+    scoreChangeReason: string;
+    lastAnalyzed: string;
+  }) => {
+    setDuplicateData(prevData => 
+      prevData.map(pair => 
+        pair.id === pairId 
+          ? {
+              ...pair,
+              enhancedConfidence: enhancedResults.enhancedConfidence,
+              enhancedScore: enhancedResults.enhancedScore,
+              originalScore: enhancedResults.originalScore,
+              scoreChangeReason: enhancedResults.scoreChangeReason,
+              lastAnalyzed: enhancedResults.lastAnalyzed
+            }
+          : pair
+      )
+    );
+  };
+
+  // Handle caching AI analysis results
+  const handleCacheAnalysis = (pairId: string, analysis: any) => {
+    setDuplicateData(prevData => 
+      prevData.map(pair => 
+        pair.id === pairId 
+          ? { ...pair, cachedAiAnalysis: analysis }
+          : pair
+      )
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppHeader />
@@ -419,6 +493,9 @@ export default function HomePage() {
           isOpen={!!selectedPairForReview}
           onClose={handleCloseModal}
           onResolve={handleResolvePair}
+          onAnalyzeConfidence={handleAnalyzeConfidence}
+          onEnhancedAnalysisComplete={handleEnhancedAnalysisComplete}
+          onCacheAnalysis={handleCacheAnalysis}
         />
       )}
       
@@ -452,7 +529,7 @@ export default function HomePage() {
       </Dialog>
       
        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
-         © {new Date().getFullYear()} DataCleanse. All rights reserved.
+         © {new Date().getFullYear()} Powered by Flowserve AI. All rights reserved.
        </footer>
      </div>
   );

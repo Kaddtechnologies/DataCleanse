@@ -331,13 +331,13 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   
   // Processing time estimates per 100 records (in seconds)
   const PROCESSING_TIMES = {
-    prefix: 0.54,
-    metaphone: 0.89,
-    soundex: 1.27,
-    ngram: 9.03,
-    ai: 53.16,
-    prefix_ai: 54,
-    all_ai: 61.41
+    prefix: 0.03,
+    metaphone: 0.024,
+    soundex: 0.035,
+    ngram: 0.26,
+    ai: 2.95,
+    prefix_ai: 2.98,
+    all_ai: 3.30
   };
   
   // Calculate estimated completion time based on selected strategies and dataset size

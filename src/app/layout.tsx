@@ -7,8 +7,8 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: "DataCleanse - Customer Deduplication",
-  description: "Identify and manage duplicate customer records with DataCleanse.",
+  title: "Flowserve AI - Customer Deduplication",
+  description: "Identify and manage duplicate customer records with Flowserve AI.",
 };
 
 export default function RootLayout({
