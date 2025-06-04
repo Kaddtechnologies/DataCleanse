@@ -175,6 +175,9 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
   const [error, setError] = useState<string | null>(null);
   const [showDetailedRules, setShowDetailedRules] = useState(false);
   const [showRiskFactors, setShowRiskFactors] = useState(false);
+  // Add flags to track analysis state
+  const [hasAttemptedAnalysis, setHasAttemptedAnalysis] = useState(false);
+  const [retryRequested, setRetryRequested] = useState(false);
 
   // Use ref to avoid dependency issues with onAnalysisComplete
   const onAnalysisCompleteRef = useRef(onAnalysisComplete);
@@ -224,6 +227,8 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
       console.log("Using cached AI analysis for this pair");
       setAnalysis(cachedAnalysis);
       setIsLoading(false);
+      setError(null); // Clear any previous errors
+      setHasAttemptedAnalysis(true);
       
       // Still trigger the enhanced analysis callback if needed
       if (onAnalysisCompleteRef.current && cachedAnalysis.smartAnalysis) {
@@ -252,14 +257,28 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
       return;
     }
 
-    if (!analyzeFunction) {
-      setError("AI analysis function not available");
+    // Check if we should skip analysis (already attempted and no retry requested)
+    if (hasAttemptedAnalysis && !retryRequested) {
+      console.log("Analysis already attempted and no retry requested, skipping");
       setIsLoading(false);
       return;
     }
 
+    if (!analyzeFunction) {
+      setError("AI analysis function not available");
+      setIsLoading(false);
+      setHasAttemptedAnalysis(true);
+      return;
+    }
+
+    // Reset retry flag if it was set
+    if (retryRequested) {
+      setRetryRequested(false);
+    }
+
     setIsLoading(true);
     setError(null);
+    
     try {
       console.log("Fetching new AI analysis from API");
       const transformedRecord1 = transformRecord(record1);
@@ -297,6 +316,7 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
       }
       
       setAnalysis(result);
+      setError(null);
       
       // Cache the analysis result
       if (onCacheAnalysis) {
@@ -345,14 +365,30 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
       }
     } finally {
       setIsLoading(false);
+      setHasAttemptedAnalysis(true);
     }
-  }, [record1, record2, fuzzyScore, analyzeFunction, cachedAnalysis, onCacheAnalysis]);
+  }, [record1, record2, fuzzyScore, analyzeFunction, cachedAnalysis, onCacheAnalysis, hasAttemptedAnalysis, retryRequested]);
 
+  // Handle manual retry
+  const handleRetry = () => {
+    setRetryRequested(true);
+    setError(null);
+    fetchAnalysis();
+  };
+
+  // Reset analysis state when core record data changes
   useEffect(() => {
-    if (record1 && record2 && fuzzyScore) {
+    setHasAttemptedAnalysis(false);
+    setAnalysis(null);
+    setError(null);
+  }, [record1?.id, record2?.id, fuzzyScore]);
+
+  // Trigger analysis only when needed
+  useEffect(() => {
+    if (record1 && record2 && fuzzyScore && !hasAttemptedAnalysis) {
       fetchAnalysis();
     }
-  }, [record1, record2, fuzzyScore, analyzeFunction]);
+  }, [record1, record2, fuzzyScore, hasAttemptedAnalysis]);
 
   if (isLoading) {
     return (
@@ -388,7 +424,7 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={fetchAnalysis}
+            onClick={handleRetry}
             disabled={isLoading}
           >
             {isLoading ? "Retrying..." : "Retry Analysis"}

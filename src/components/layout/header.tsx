@@ -28,7 +28,7 @@ function ThemeToggle() {
 
 export function AppHeader() {
   const { theme } = useTheme();
-  const logoSrc = theme === "dark" ? "/flowserve_logo_white.svg" : "/flowserve_logo.svg";
+  const logoSrc = theme === "dark" ? "/flowserve_logo_white.svg" : "/flowserve_logo_white.svg";
 
   return (
     <header className="bg-primary-gradient shadow-md">
@@ -52,7 +52,7 @@ export function AppHeader() {
         </div>
 
         {/* Subtitle */}
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-accent-foreground">
           Intelligent ERP Data Cleanser
         </p>
       </div>

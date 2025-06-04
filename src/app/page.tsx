@@ -350,13 +350,48 @@ export default function HomePage() {
 
   // Handle caching AI analysis results
   const handleCacheAnalysis = (pairId: string, analysis: any) => {
-    setDuplicateData(prevData => 
+    setDuplicateData(prevData =>
       prevData.map(pair => 
         pair.id === pairId 
           ? { ...pair, cachedAiAnalysis: analysis }
           : pair
       )
     );
+  };
+
+  // Handle deleting invalid records
+  const handleDeleteInvalidRecords = async (pairIds: string[]) => {
+    try {
+      const deletedCount = pairIds.length;
+      
+      // Remove the invalid pairs from the data
+      setDuplicateData(prevData => 
+        prevData.filter(pair => !pairIds.includes(pair.id))
+      );
+      
+      // Clear any selected rows that were deleted
+      setSelectedRowIds(prevSelected => {
+        const newSelected = new Set(prevSelected);
+        pairIds.forEach(id => newSelected.delete(id));
+        return newSelected;
+      });
+      
+      // Show success toast
+      toast({
+        title: "Invalid Records Deleted",
+        description: `Successfully removed ${deletedCount} duplicate pair${deletedCount !== 1 ? 's' : ''} with invalid names.`,
+        variant: "default"
+      });
+      
+    } catch (error) {
+      console.error('Error deleting invalid records:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete invalid records. Please try again.",
+        variant: "destructive"
+      });
+      throw error; // Re-throw to let the modal handle the error state
+    }
   };
 
   return (
@@ -469,6 +504,7 @@ export default function HomePage() {
                 selectedRowIds={selectedRowIds}
                 onToggleRowSelection={handleToggleRowSelection}
                 onToggleSelectAll={handleToggleSelectAll}
+                onDeleteInvalidRecords={handleDeleteInvalidRecords}
               />
              
             </section>

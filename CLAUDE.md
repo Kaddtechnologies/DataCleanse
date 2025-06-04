@@ -1,235 +1,75 @@
-# CLAUDE.md - DataCleansing Project Documentation
+# CLAUDE.md
 
-This document provides an overview of the DataCleansing project structure, development patterns, and key information for AI assistance.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-This repository contains a data deduplication and cleansing system consisting of two main components:
+This is a Next.js 15.2.3 application for MDM (Master Data Management) data deduplication and cleansing with AI-powered analysis. The system integrates with Azure OpenAI (GPT 4.1-Nano) for intelligent duplicate detection confidence scoring.
 
-1. **DataCleansing_Python**: FastAPI backend service for duplicate record detection
-2. **DataCleansing_React**: Next.js frontend application with AI-powered analysis
+## Essential Commands
 
-## Project Structure
+### Development
+- `npm run dev` - Start development server with auto-open browser (port 9003)
+- `npm run dev:noopen` - Start development server without opening browser
+- `npm run genkit:dev` - Start Google Genkit AI development server
+- `npm run genkit:watch` - Start Genkit with file watching
+- `npm run build` - Build production version
+- `npm run lint` - Run ESLint
+- `npm run typecheck` - Run TypeScript type checking
 
-```
-/mnt/c/Users/10187499/repos/
-├── DataCleansing_Python/          # Backend API service
-│   ├── src/                       # Modular source code
-│   │   ├── main.py               # FastAPI app and endpoints
-│   │   ├── models/               # Pydantic data models
-│   │   ├── utils/                # Utility functions (fuzzy matching, AI scoring, text processing)
-│   │   └── core/                 # Core deduplication algorithms
-│   ├── app.py                    # Entry point with backward compatibility
-│   ├── requirements.txt          # Python dependencies
-│   ├── Dockerfile               # Container configuration
-│   ├── deploy_to_azure.sh       # Azure Container Apps deployment script
-│   └── blocking_*.py            # Various deduplication strategies
-│
-└── DataCleansing_React/          # Frontend application
-    ├── src/
-    │   ├── app/                  # Next.js app router
-    │   ├── components/           # React components (UI, data grid, modals)
-    │   ├── ai/                   # Google Genkit AI integration
-    │   ├── types/                # TypeScript type definitions
-    │   ├── hooks/                # Custom React hooks
-    │   └── lib/                  # Utility libraries
-    ├── package.json             # Node.js dependencies
-    └── tailwind.config.ts       # Styling configuration
-```
+### Custom Development Script
+The project uses a custom dev script (`src/scripts/dev.js`) that automatically opens the browser to the correct port.
 
-## Technology Stack
+## Architecture Overview
 
-### Backend (DataCleansing_Python)
-- **Framework**: FastAPI with Uvicorn
-- **Language**: Python 3.11+
-- **Key Libraries**:
-  - `pandas` - Data manipulation
-  - `thefuzz`, `jellyfish` - Fuzzy string matching
-  - `pydantic` - Data validation
-  - `python-multipart` - File upload handling
-- **AI Integration**: OpenAI GPT models for confidence scoring
-- **Deployment**: Docker + Azure Container Apps
+### Core Data Flow
+1. **File Upload** (`src/components/file-upload.tsx`) - Handles CSV/Excel uploads
+2. **Data Processing** - Sends to Python backend API for duplicate detection using multiple blocking strategies
+3. **AI Analysis** (`src/ai/genkit.ts`) - Azure OpenAI integration for confidence scoring
+4. **Interactive Review** (`src/components/card-review-modal.tsx`) - User interface for reviewing detected duplicates
+5. **Data Export** (`src/components/data-export-actions.tsx`) - Export cleaned data and results
 
-### Frontend (DataCleansing_React)
-- **Framework**: Next.js 15.2.3 with App Router
-- **Language**: TypeScript
-- **UI Library**: Radix UI components with Tailwind CSS
-- **AI Integration**: Google Genkit with Gemini 2.0 Flash
-- **State Management**: React hooks with local state
-- **Data Handling**: TanStack Table for data grids
+### Key TypeScript Interfaces (`src/types/index.ts`)
+- `CustomerRecord` - Core data record with similarity scores and metadata
+- `DuplicatePair` - Represents potential duplicates with AI analysis results
 
-## Key Features
+### AI Integration Architecture
+- **Server-side only**: Genkit code uses dynamic requires to avoid client bundling
+- **Azure OpenAI**: GPT 4.1-Nano model via Azure endpoint
+- **Environment config**: `environment.ts` manages API endpoints and deployment settings
+- **Smart caching**: AI analysis results cached to avoid repeated API calls
 
-### Deduplication Strategies
-- **Prefix Blocking**: First 4 characters of name + first character of city
-- **Metaphone Blocking**: Phonetic encoding for company names
-- **Soundex Blocking**: Alternative phonetic algorithm
-- **N-gram Blocking**: Character 3-grams from names
-- **AI Confidence Scoring**: GPT/Gemini evaluation of duplicate matches
+### Backend Integration
+- Python FastAPI backend for duplicate detection algorithms
+- Multiple blocking strategies: prefix, metaphone, soundex, n-gram
+- Environment-based API URL switching (localhost:8000 dev, Azure prod)
 
-### Frontend Capabilities
-- Interactive data grid with filtering and sorting
-- Card-based duplicate review interface
-- AI-powered confidence analysis
-- File upload with drag-and-drop
-- Data export functionality
-- Real-time duplicate processing
+### UI Components
+- Built on Radix UI with Tailwind CSS
+- TanStack Table for complex data grids
+- shadcn/ui component patterns throughout
 
-## Development Patterns
+## Environment Configuration
 
-### Python Backend
-- **Modular Architecture**: Separated concerns (models, utils, core logic)
-- **FastAPI Best Practices**: Proper endpoint structure, validation, error handling
-- **Backward Compatibility**: Entry point maintains existing API contracts
-- **Testing**: Dedicated test files for each component
-- **Configuration**: Environment-based settings with defaults
+### Required Environment Variables
+- `OPENAI_API_KEY` - Azure OpenAI API key for Genkit integration
+- `NODE_ENV` - Determines API endpoint (production vs development)
 
-### React Frontend
-- **Component-Based**: Reusable UI components with shadcn/ui
-- **Type Safety**: Comprehensive TypeScript interfaces
-- **Hook-Based State**: Custom hooks for common patterns
-- **Responsive Design**: Mobile-first with Tailwind CSS
-- **AI Integration**: Structured flows for AI analysis
+### Azure OpenAI Settings (in environment.ts)
+- Endpoint: `https://devoai.openai.azure.com`
+- API Version: `2025-01-01-preview`
+- Deployment: `dai-gpt-4.1-nano`
 
-## Configuration & Environment
+## Critical Development Notes
 
-### Backend Environment Variables
-- `PORT`: API server port (default: 8000)
-- `OPEN-API-KEY`: OpenAI API key for AI scoring
-- `ENVIRONMENT`: Deployment environment
+### Genkit Server-Side Pattern
+Genkit AI functions MUST only run server-side due to Node.js dependencies. The code uses:
+- Dynamic `require()` statements in server environments
+- Client-side stubs that throw errors if accidentally accessed
+- Environment checks (`typeof window === 'undefined'`)
 
-### Frontend Environment Variables
-- `OPENAI_API_KEY`: Open AI API key for Genkit
+### AI Analysis Flow
+The AI confidence scoring uses a detailed prompt system with structured output expectations including confidence scores, reasoning, and recommendations for each duplicate pair.
 
-## API Endpoints
-
-### Core Endpoints
-- `GET /`: Health check
-- `GET /api/health`: Detailed health status
-- `POST /api/find-duplicates`: Main deduplication endpoint
-- `POST /deduplicate/`: Enhanced deduplication with strategy selection
-
-### Request Parameters
-- File upload (CSV/XLSX)
-- Column mapping JSON
-- Blocking strategy flags (`use_prefix`, `use_metaphone`, `use_soundex`, `use_ngram`)
-- Similarity thresholds (`name_threshold`, `overall_threshold`)
-- AI analysis toggle (`use_ai`)
-
-## Data Models
-
-### CustomerRecord Interface
-```typescript
-interface CustomerRecord {
-  id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  country?: string;
-  tpi?: string;
-  // Similarity scores and metadata
-}
-```
-
-### DuplicatePair Interface
-```typescript
-interface DuplicatePair {
-  id: string;
-  record1: CustomerRecord;
-  record2: CustomerRecord;
-  similarityScore: number;
-  aiConfidence?: string;
-  aiReasoning?: string;
-  status: 'pending' | 'merged' | 'not_duplicate' | 'skipped';
-}
-```
-
-## Build & Deployment
-
-### Local Development
-```bash
-# Backend
-cd DataCleansing_Python
-pip install -r requirements.txt
-python app.py
-
-# Frontend
-cd DataCleansing_React
-npm install
-npm run dev
-```
-
-### Docker Deployment
-```bash
-# Backend
-docker build -t datacleansing .
-docker run -p 8000:8000 datacleansing
-
-# Azure deployment
-./deploy_to_azure.sh
-```
-
-### Frontend Scripts
-- `npm run dev`: Development server with auto-open
-- `npm run dev:noopen`: Development without browser open
-- `npm run genkit:dev`: Start Genkit AI development server
-- `npm run build`: Production build
-- `npm run typecheck`: TypeScript validation
-
-## Common Development Tasks
-
-### Adding New Deduplication Strategy
-1. Create new blocking strategy file in Python backend
-2. Update `DeduplicationColumnMap` in models
-3. Add strategy flag to API endpoints
-4. Update frontend UI to include new option
-
-### Modifying AI Analysis
-1. Update prompts in `src/ai/genkit.ts`
-2. Modify confidence scoring logic
-3. Update TypeScript interfaces if needed
-4. Test with various data scenarios
-
-### UI Component Changes
-1. Components use shadcn/ui patterns
-2. Styling with Tailwind CSS utility classes
-3. State management through React hooks
-4. Type safety with TypeScript interfaces
-
-## Testing Strategy
-
-### Backend Testing
-- Unit tests for deduplication algorithms
-- API endpoint testing
-- Blocking strategy validation
-- AI scoring integration tests
-
-### Frontend Testing
-- Component unit tests (when implemented)
-- AI flow integration testing
-- User interaction testing
-
-## Performance Considerations
-
-- **Blocking Strategies**: Trade-off between speed and accuracy
-- **AI Analysis**: Significant processing time, use selectively
-- **Data Grid**: Virtual scrolling for large datasets
-- **File Processing**: Stream processing for large files
-
-## Security Notes
-
-- API keys stored in environment variables
-- File uploads validated and processed securely
-- No persistent storage of uploaded data
-- CORS configured for development
-
-## Documentation Resources
-
-- `ENHANCED_README.md`: Detailed backend documentation
-- `MachineLearning.md`: ML approach documentation
-- `blocking_strategies_README.md`: Strategy comparison
-- `docs/blueprint.md`: Frontend design specification
-
-This documentation should be updated as the project evolves to maintain accuracy for AI assistance.
+### Data Structure
+Records flow through multiple similarity scoring phases (name, address, city, country, TPI) with enhanced AI analysis that can override or supplement algorithmic scores.
