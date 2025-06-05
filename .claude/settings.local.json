@@ -10,7 +10,15 @@
       "Bash(PGPASSWORD=mdm_password123 psql -h localhost -U mdm_user -d mdm_dedup -f scripts/fix-session-config-constraint.sql)",
       "Bash(./scripts/run-tests.sh:*)",
       "Bash(node:*)",
-      "Bash(npm run typecheck:*)"
+      "Bash(npm run typecheck:*)",
+      "Bash(cp:*)",
+      "Bash(npm run dev:*)",
+      "Bash(rg:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(for component in accordion avatar chart dropdown-menu menubar popover radio-group sheet skeleton slider switch tabs textarea tooltip)",
+      "Bash(do echo \"=== $component ===\")",
+      "Bash(done)"
     ]
   },
   "enableAllProjectMcpServers": false

@@ -153,34 +153,44 @@ const CustomerRecordCard = ({
   const DetailComponent = isComparing && comparisons ? DiffRecordDetail : RecordDetail;
   
   return (
-    <Card className={`flex-1 min-w-[300px] shadow-md ${isInvalid ? 'border-l-4 border-red-400' : ''}`}>
-      <CardHeader>
-        <CardTitle className={`text-xl ${isInvalid ? 'text-red-600' : ''}`}>
-          {title}
-          {isInvalid && (
-            <span className="ml-2 text-sm font-normal text-red-500">(Invalid Name)</span>
-          )}
-        </CardTitle>
-        <CardDescription className="text-base">
-          {record.name}
-          {isInvalid && (
-            <span className="ml-2 text-sm text-red-500 dark:text-red-400">(invalid value)</span>
-          )}
-        </CardDescription>
+    <Card className={`relative bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-xl overflow-hidden ${isInvalid ? 'border-l-4 border-red-500' : ''}`}>
+      {/* Executive Card Header */}
+      <div className="bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 dark:from-slate-700 dark:via-slate-800 dark:to-slate-700 border-b border-slate-200 dark:border-slate-600">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className={`text-lg font-medium tracking-wide ${isInvalid ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                {title}
+                {isInvalid && (
+                  <span className="ml-2 text-sm font-normal text-red-500">(Data Quality Issue)</span>
+                )}
+              </CardTitle>
+              <CardDescription className="text-base font-light mt-1 text-slate-600 dark:text-slate-400">
+                {record.name}
+                {isInvalid && (
+                  <span className="ml-2 text-sm text-red-500 dark:text-red-400">(requires attention)</span>
+                )}
+              </CardDescription>
+            </div>
+            <div className="w-2 h-8 bg-gradient-to-b from-blue-500 to-purple-600 rounded-full" />
+          </div>
         
-        {/* Simplified Invalid Name Warning */}
-        {isInvalid && (
-          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-3 mt-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400 mt-0.5 flex-shrink-0" />
-              <div className="text-sm">
-                <p className="text-red-700 dark:text-red-300 font-medium">Invalid Name Detected</p>
-                <p className="text-red-600 dark:text-red-400 mt-1">{getInvalidNameReason(record)}</p>
+          {/* Executive Data Quality Alert */}
+          {isInvalid && (
+            <div className="mt-4 bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-red-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="h-4 w-4 text-white" />
+                </div>
+                <div className="text-sm">
+                  <p className="text-red-800 dark:text-red-200 font-semibold">Data Quality Alert</p>
+                  <p className="text-red-700 dark:text-red-300 mt-1 leading-relaxed">{getInvalidNameReason(record)}</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
-      </CardHeader>
+          )}
+        </CardHeader>
+      </div>
       <CardContent className="space-y-3">
         {/* Basic Information Section */}
         <div className="space-y-2 mb-4">
@@ -467,37 +477,75 @@ export function CardReviewModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl w-[90vw] p-0">
-        <ScrollArea className="max-h-[90vh]">
-          <div className="p-6">
-            <DialogHeader className="mb-4">
-              <DialogTitle className="text-2xl">Review Potential Duplicate</DialogTitle>
-              <p className="text-sm text-muted-foreground">
-                Compare the two records below and decide on an action. Similarity Score: <span className="font-bold text-primary">{(pair.similarityScore * 100).toFixed(0)}%</span>
-              </p>
+    <Dialog open={isOpen} onOpenChange={() => {}} modal={true}>
+      <DialogContent className="max-w-6xl w-[95vw] p-0 bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700">
+        {/* Executive Header */}
+        <div className="relative bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-300 dark:border-slate-600">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-purple-900/5 to-blue-900/10" />
+          <div className="relative px-8 py-6">
+            <DialogHeader>
+              <DialogTitle className="text-2xl font-light text-white tracking-wide">
+                Duplicate Record Analysis
+              </DialogTitle>
+              <div className="flex items-center justify-between mt-3">
+                <p className="text-sm text-white/80 font-light">
+                  Executive review and decision interface for data quality management
+                </p>
+                <div className="flex items-center space-x-3 px-4 py-2 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                    <span className="text-xs font-medium text-white/90 tracking-wide">SIMILARITY</span>
+                  </div>
+                  <div className="w-px h-4 bg-white/30" />
+                  <span className="text-lg font-semibold text-white">{(pair.similarityScore * 100).toFixed(0)}%</span>
+                </div>
+              </div>
             </DialogHeader>
+          </div>
+        </div>
+        
+        <ScrollArea className="max-h-[75vh]">
+          <div className="p-8 space-y-8">
             
-            <DiffLegend />
-            
-            <div className="flex flex-col md:flex-row gap-6 mb-6">
-              <CustomerRecordCard 
-                record={pair.record1} 
-                title="Record 1" 
-                comparisons={comparisons}
-                isComparing={true}
-                onRowNumberClick={(rowNumber) => handleRowNumberClick([rowNumber])}
-              />
-              <CustomerRecordCard 
-                record={pair.record2} 
-                title="Record 2" 
-                comparisons={comparisons}
-                isComparing={true}
-                onRowNumberClick={(rowNumber) => handleRowNumberClick([rowNumber])}
-              />
+            {/* Executive Field Comparison Legend */}
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 tracking-wide">Data Comparison Matrix</h3>
+                <div className="flex items-center gap-6 text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-emerald-500 rounded-sm" />
+                    <span className="font-medium text-slate-600 dark:text-slate-400">Identical</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-amber-500 rounded-sm" />
+                    <span className="font-medium text-slate-600 dark:text-slate-400">Similar</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 bg-yellow-500 rounded-sm" />
+                    <span className="font-medium text-slate-600 dark:text-slate-400">Different</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid md:grid-cols-2 gap-8">
+                <CustomerRecordCard 
+                  record={pair.record1} 
+                  title="Primary Record" 
+                  comparisons={comparisons}
+                  isComparing={true}
+                  onRowNumberClick={(rowNumber) => handleRowNumberClick([rowNumber])}
+                />
+                <CustomerRecordCard 
+                  record={pair.record2} 
+                  title="Comparison Record" 
+                  comparisons={comparisons}
+                  isComparing={true}
+                  onRowNumberClick={(rowNumber) => handleRowNumberClick([rowNumber])}
+                />
+              </div>
             </div>
 
-            <Separator className="my-6" />
+            <div className="h-px bg-gradient-to-r from-transparent via-slate-300 dark:via-slate-600 to-transparent" />
 
             <AiAnalysisDisplay 
               record1={pair.record1} 
@@ -509,20 +557,36 @@ export function CardReviewModal({
               onCacheAnalysis={handleCacheAnalysis}
             />
 
-            <div className="mt-8 flex flex-col sm:flex-row justify-between gap-4">
-              <Button variant="outline" onClick={() => handleResolve(pair.id, pair.record1.name, 'skipped')} className="w-full sm:w-auto">
-                <SkipForwardIcon className="w-4 h-4 mr-2" />
-                Skip
-              </Button>
-              <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="destructive" onClick={() => handleResolve(pair.id, pair.record1.name, 'not_duplicate')} className="flex-1">
-                  <X className="w-4 h-4 mr-2" />
-                  Not a Duplicate
-                </Button>
-                <Button onClick={() => handleResolve(pair.id, pair.record1.name, 'duplicate')} className="flex-1 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white">
-                  <Check className="w-4 h-4 mr-2" />
-                  Mark as Duplicate
-                </Button>
+            {/* Executive Decision Interface */}
+            <div className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl p-6">
+              <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 tracking-wide mb-6">Executive Decision</h3>
+              
+              <div className="flex flex-col sm:flex-row justify-between gap-4">
+                <button
+                  onClick={() => handleResolve(pair.id, pair.record1.name, 'skipped')}
+                  className="group px-6 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 transition-all duration-300 flex items-center justify-center space-x-3"
+                >
+                  <SkipForwardIcon className="w-5 h-5 text-slate-600 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300" />
+                  <span className="font-medium text-slate-700 dark:text-slate-300 tracking-wide">Defer Decision</span>
+                </button>
+                
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-3">
+                  <button
+                    onClick={() => handleResolve(pair.id, pair.record1.name, 'not_duplicate')}
+                    className="group px-8 py-3 rounded-xl bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white border border-red-600 transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl"
+                  >
+                    <X className="w-5 h-5" />
+                    <span className="font-semibold tracking-wide">Separate Records</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleResolve(pair.id, pair.record1.name, 'duplicate')}
+                    className="group px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white border border-emerald-600 transition-all duration-300 flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl"
+                  >
+                    <Check className="w-5 h-5" />
+                    <span className="font-semibold tracking-wide">Confirm Duplicate</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

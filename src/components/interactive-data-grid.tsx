@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2, Zap } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2, Zap, Search } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -189,6 +189,7 @@ export function InteractiveDataGrid({
 }: InteractiveDataGridProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [smartSearchQuery, setSmartSearchQuery] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
@@ -229,7 +230,46 @@ export function InteractiveDataGrid({
     }
   };
 
-  // Filter data based on status and confidence filters
+  // Smart search function - searches only in specific searchable fields
+  const smartSearchFilter = (pair: DuplicatePair, query: string): boolean => {
+    if (!query.trim()) return true;
+    
+    // Normalize search query: lowercase, trim, and remove special characters for better matching
+    const searchQuery = query.toLowerCase().trim().replace(/[^\w\s]/g, '');
+    
+    // Define searchable fields for both records including state/region
+    const searchableFields = [
+      // Record 1 fields
+      pair.record1.name?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.address?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.city?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.country?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.state?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.region?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.tpi?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.rowNumber?.toString() || '',
+      
+      // Record 2 fields  
+      pair.record2.name?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.address?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.city?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.country?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.state?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.region?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.tpi?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.rowNumber?.toString() || '',
+    ];
+    
+    // Support multiple search terms (space-separated)
+    const searchTerms = searchQuery.split(/\s+/).filter(term => term.length > 0);
+    
+    // Check if all search terms are found in at least one field
+    return searchTerms.every(term =>
+      searchableFields.some(field => field.includes(term))
+    );
+  };
+
+  // Filter data based on status, confidence, and smart search
   const filteredData = useMemo(() => {
     return data.filter(pair => {
       // Apply status filter
@@ -242,9 +282,14 @@ export function InteractiveDataGrid({
         return false;
       }
       
+      // Apply smart search filter
+      if (!smartSearchFilter(pair, smartSearchQuery)) {
+        return false;
+      }
+      
       return true;
     });
-  }, [data, statusFilter, confidenceFilter]);
+  }, [data, statusFilter, confidenceFilter, smartSearchQuery]);
 
   
 
@@ -456,13 +501,10 @@ export function InteractiveDataGrid({
     columns,
     state: {
       sorting,
-      globalFilter,
     },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: {
       pagination: {
@@ -485,7 +527,7 @@ export function InteractiveDataGrid({
       
       // Use the dedicated export utility
       await exportDuplicatePairsToExcel(data, filteredDataForExport, {
-        globalFilter,
+        globalFilter: smartSearchQuery, // Use smart search query instead
         statusFilter,
         confidenceFilter
       });
@@ -533,18 +575,38 @@ export function InteractiveDataGrid({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
             Showing {filteredData.length} of {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
+            {smartSearchQuery && ` (Search: "${smartSearchQuery}")`}
             {statusFilter !== "all" && ` (Status: ${statusFilter})`}
             {confidenceFilter !== "all" && ` (Confidence: ${confidenceFilter})`}
           </p>
           
           <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
-            {/* Search Input */}
-            <Input
-              placeholder="Search all columns..."
-              value={globalFilter ?? ""}
-              onChange={(event) => setGlobalFilter(event.target.value)}
-              className="w-full sm:w-64"
-            />
+            {/* Smart Search Input */}
+            <div className="relative w-full sm:w-80">
+              <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+                <Search className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <Input
+                placeholder="Search by name, address, city, state, country, TPI, or row number..."
+                value={smartSearchQuery}
+                onChange={(event) => setSmartSearchQuery(event.target.value)}
+                className="pl-10 bg-background border-muted-foreground/20 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200"
+              />
+              {smartSearchQuery && (
+                <button
+                  onClick={() => setSmartSearchQuery('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {smartSearchQuery && (
+              <div className="text-xs text-muted-foreground mt-1 w-full sm:w-80">
+                💡 Tip: Use spaces to search multiple terms (e.g., "john london" finds records with both words)
+              </div>
+            )}
             
             {/* Filter Controls */}
             <div className="flex items-center gap-2">

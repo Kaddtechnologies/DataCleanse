@@ -7,7 +7,6 @@ import { FileUpload } from '@/components/file-upload';
 import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
-import { SessionManager } from '@/components/session-manager';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, AlertTriangle, FileText, Trash2 } from 'lucide-react';
 import { separateValidAndInvalidPairs } from '@/utils/record-validation';
@@ -52,6 +51,8 @@ export default function HomePage() {
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessionMetadata, setSessionMetadata] = useState<Record<string, any> | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<'none' | 'ready' | 'active'>('none');
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   
   // Invalid records state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -94,9 +95,22 @@ export default function HomePage() {
     setIsLoadingData(true);
     setSelectedRowIds(new Set()); // Clear selection on new file
     
+    // Handle session status based on response
+    if (apiResponse.sessionId === undefined) {
+      // File was removed or cleared
+      setCurrentSessionId(null);
+      setSessionStatus('none');
+      setLastSaved(null);
+      setHasBulkMergedThisSession(false);
+      setDuplicateData([]);
+      setIsLoadingData(false);
+      return;
+    }
+    
     // Store session information from response
     if (apiResponse.sessionId) {
       setCurrentSessionId(apiResponse.sessionId);
+      setSessionStatus('active'); // Deduplication has started
     }
     setHasBulkMergedThisSession(false); // Reset bulk merge flag for new upload
 
@@ -168,6 +182,9 @@ export default function HomePage() {
           description: `Found ${apiResponse.results.stats.total_potential_duplicate_records} potential duplicates in ${apiResponse.results.stats.total_master_records_with_duplicates} groups.`,
           variant: "default"
         });
+        
+        // Update last saved timestamp since data was successfully processed and saved
+        setLastSaved(new Date());
       }
     } catch (error) {
       console.error('Error processing API response:', error);
@@ -187,6 +204,7 @@ export default function HomePage() {
       setCurrentSessionId(sessionData.session.id);
       setSessionMetadata(sessionData.session);
       setDuplicateData(sessionData.duplicate_pairs || []);
+      setSessionStatus('active'); // Loaded session is active
       
       toast({
         title: "Session Restored",
@@ -202,6 +220,16 @@ export default function HomePage() {
     }
   };
 
+  // Handler for when file is ready to be processed
+  const handleFileReady = () => {
+    setSessionStatus('ready');
+  };
+
+  // Helper function to update last saved timestamp
+  const updateLastSaved = () => {
+    setLastSaved(new Date());
+  };
+
   const handleReviewPair = (pair: DuplicatePair) => {
     setSelectedPairForReview(pair);
   };
@@ -215,6 +243,7 @@ export default function HomePage() {
       prevData.map(p => p.id === pairId ? { ...p, status: resolution } : p)
     );
     setSelectedPairForReview(null);
+    updateLastSaved(); // Track save activity
     toast({ title: "Pair Resolved", description: `Record pair ${recordName} marked as ${resolution.replace('_', ' ')}.`, variant: "default" });
   };
 
@@ -490,6 +519,8 @@ export default function HomePage() {
       <AppHeader 
         onLoadPreviousSession={handleLoadSession}
         sessionId={currentSessionId || undefined}
+        sessionStatus={sessionStatus}
+        lastSaved={lastSaved}
       />
       <main className="container mx-auto p-4 md:p-8 space-y-8 flex-grow">
         <section aria-labelledby="file-upload-heading">
@@ -497,6 +528,7 @@ export default function HomePage() {
           <FileUpload 
             onFileProcessed={handleFileProcessed}
             onLoadSession={handleLoadSession}
+            onFileReady={handleFileReady}
           />
         </section>
 

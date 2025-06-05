@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Calendar, Clock, FileText, Users, Trash2, Loader2, Search, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Calendar, Clock, FileText, Users, Trash2, Loader2, Search, CheckCircle, AlertTriangle, Copy, Check, Activity } from 'lucide-react';
 import { cn } from "@/lib/utils";
 
 interface SessionData {
@@ -46,6 +46,7 @@ export function SessionLoadingDialog({
   const [sessionToDelete, setSessionToDelete] = useState<SessionData | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Fetch sessions when dialog opens
   useEffect(() => {
@@ -83,9 +84,22 @@ export function SessionLoadingDialog({
     }
   };
 
+  const copySessionName = async () => {
+    if (!sessionToDelete?.sessionName) return;
+    
+    try {
+      await navigator.clipboard.writeText(sessionToDelete.sessionName);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy session name:', error);
+    }
+  };
+
   const handleDeleteClick = (session: SessionData) => {
     setSessionToDelete(session);
     setConfirmationText("");
+    setCopied(false);
     setDeleteDialogOpen(true);
   };
 
@@ -144,17 +158,32 @@ export function SessionLoadingDialog({
 
   if (sessions.length === 0 && !fetchingSessions && isOpen) {
     return (
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>No Previous Sessions</DialogTitle>
-          </DialogHeader>
-          <div className="text-center py-8">
-            <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground mb-4">
-              No previous sessions found. Upload a file to create your first session.
-            </p>
-            <Button onClick={onClose}>Close</Button>
+      <Dialog open={isOpen} onOpenChange={() => {}} modal={true}>
+        <DialogContent className="max-w-2xl bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700">
+          {/* Executive Header */}
+          <div className="relative bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-300 dark:border-slate-600 -m-6 mb-0 p-6">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-purple-900/5 to-blue-900/10" />
+            <DialogHeader className="relative">
+              <DialogTitle className="text-xl font-light text-white tracking-wide">Session Management</DialogTitle>
+              <p className="text-sm text-white/80 font-light mt-2">Data session repository</p>
+            </DialogHeader>
+          </div>
+          
+          <div className="text-center py-12 px-6">
+            <div className="w-16 h-16 mx-auto mb-6 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-2xl flex items-center justify-center">
+              <Activity className="w-8 h-8 text-slate-600 dark:text-slate-400" />
+            </div>
+            <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-3">No Active Sessions</h3>
+            <p className="text-slate-600 dark:text-slate-400 mb-8 leading-relaxed max-w-md mx-auto">
+            You haven't started any data cleansing sessions yet.
+            <br />
+            Upload a file to begin your first session.            </p>
+            <button
+              onClick={onClose}
+              className="px-8 py-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white font-medium tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl"
+            >
+              Continue
+            </button>
           </div>
         </DialogContent>
       </Dialog>
@@ -163,227 +192,334 @@ export function SessionLoadingDialog({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl w-[90vw] max-h-[90vh] p-0">
-          <div className="flex flex-col h-full">
-            <DialogHeader className="p-6 pb-4">
-              <DialogTitle className="text-2xl font-semibold">Load Previous Session</DialogTitle>
-              <p className="text-sm text-muted-foreground">
-                Select a previous session to continue working with your data.
-              </p>
-            </DialogHeader>
+      <Dialog open={isOpen} onOpenChange={() => {}} modal={true}>
+        <DialogContent className="max-w-6xl w-[95vw] h-[85vh] p-0 bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700">
+          {/* Executive Header */}
+          <div className="relative bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-300 dark:border-slate-600 flex-shrink-0">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-900/10 via-purple-900/5 to-blue-900/10" />
+            <div className="relative p-8">
+              <DialogHeader>
+                <DialogTitle className="text-2xl font-light text-white tracking-wide">Session Management Console</DialogTitle>
+                <p className="text-sm text-white/80 font-light mt-2">
+                  Load or manage your saved data sessions
+                </p>
+              </DialogHeader>
+            </div>
+          </div>
+          
+          <div className="flex flex-col flex-1 overflow-hidden">
 
-            <div className="px-6 pb-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search sessions by name or filename..."
+            {/* Executive Search Interface */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
+              <div className="relative max-w-md">
+                <div className="absolute left-4 top-1/2 transform -translate-y-1/2">
+                  <Search className="w-5 h-5 text-slate-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search all sessions..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="w-full pl-12 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-300 placeholder-slate-400 focus:outline-none focus:border-blue-500 dark:focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all duration-300"
                 />
               </div>
             </div>
 
-            <div className="flex-1 overflow-hidden">
-              <div className="flex h-full">
-                {/* Sessions List */}
-                <div className="w-1/2 border-r">
-                  <ScrollArea className="h-full px-6">
-                    {fetchingSessions ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                        <span>Loading sessions...</span>
-                      </div>
-                    ) : (
-                      <div className="space-y-3 pb-6">
-                        {filteredSessions.map((session) => (
-                          <Card
-                            key={session.id}
-                            className={cn(
-                              "cursor-pointer transition-all hover:shadow-md",
-                              selectedSession?.id === session.id && "ring-2 ring-primary"
-                            )}
-                            onClick={() => setSelectedSession(session)}
-                          >
-                            <CardHeader className="pb-3">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <CardTitle className="text-lg truncate">{session.sessionName}</CardTitle>
-                                  <CardDescription className="truncate">{session.fileName}</CardDescription>
-                                </div>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteClick(session);
-                                  }}
-                                  className="text-destructive hover:text-destructive hover:bg-destructive/10 h-8 w-8 p-0"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="pt-0">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                                  <div className="flex items-center">
-                                    <Users className="w-4 h-4 mr-1" />
-                                    {session.totalDuplicatePairs} pairs
+            {/* Executive Content Layout */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* Executive Session Repository */}
+              <div className="w-1/2 border-r border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+                <div className="h-full flex flex-col">
+                  <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700">
+                    <h3 className="font-medium text-slate-800 dark:text-slate-200 tracking-wide">Active Sessions</h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">Select a session to review details</p>
+                  </div>
+                  
+                  <ScrollArea className="flex-1">
+                    <div className="p-6">
+                      {fetchingSessions ? (
+                        <div className="flex items-center justify-center py-12">
+                          <div className="text-center">
+                            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-slate-400" />
+                            <span className="text-slate-600 dark:text-slate-400 font-medium">Loading previous sessions...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {filteredSessions.map((session) => (
+                            <div
+                              key={session.id}
+                              className={cn(
+                                "group relative cursor-pointer transition-all duration-300 rounded-xl border bg-white dark:bg-slate-800 hover:shadow-lg",
+                                selectedSession?.id === session.id 
+                                  ? "ring-2 ring-blue-500 dark:ring-blue-400 border-blue-200 dark:border-blue-600 shadow-lg" 
+                                  : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+                              )}
+                              onClick={() => setSelectedSession(session)}
+                            >
+                              <div className="p-5">
+                                <div className="flex items-start justify-between mb-4">
+                                  <div className="flex-1 min-w-0">
+                                    <h4 className="font-medium text-slate-800 dark:text-slate-200 truncate tracking-wide">
+                                      {session.sessionName}
+                                    </h4>
+                                    <p className="text-sm text-slate-600 dark:text-slate-400 truncate mt-1">
+                                      {session.fileName}
+                                    </p>
                                   </div>
-                                  <div className="flex items-center">
-                                    <Clock className="w-4 h-4 mr-1" />
-                                    {new Date(session.lastAccessed).toLocaleDateString()}
-                                  </div>
+                                  
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteClick(session);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition-all duration-200"
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-500" />
+                                  </button>
                                 </div>
-                                {getProgressBadge(session.progressPercentage)}
+                                
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center space-x-4 text-sm">
+                                    <div className="flex items-center text-slate-600 dark:text-slate-400">
+                                      <Users className="w-4 h-4 mr-1.5" />
+                                      <span className="font-medium">{session.totalDuplicatePairs}</span>
+                                    </div>
+                                    <div className="flex items-center text-slate-600 dark:text-slate-400">
+                                      <Clock className="w-4 h-4 mr-1.5" />
+                                      <span>{new Date(session.lastAccessed).toLocaleDateString()}</span>
+                                    </div>
+                                  </div>
+                                  {getProgressBadge(session.progressPercentage)}
+                                </div>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
+                              
+                              {selectedSession?.id === session.id && (
+                                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500/5 to-purple-500/5 pointer-events-none" />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </ScrollArea>
                 </div>
+              </div>
 
-                {/* Session Details */}
-                <div className="w-1/2 p-6">
-                  {selectedSession ? (
-                    <div className="space-y-6">
-                      <div>
-                        <h3 className="text-xl font-semibold mb-2">{selectedSession.sessionName}</h3>
-                        <p className="text-muted-foreground">{selectedSession.fileName}</p>
-                      </div>
+              {/* Executive Session Analytics */}
+              <div className="w-1/2 bg-white dark:bg-slate-800">
+                {selectedSession ? (
+                  <div className="h-full flex flex-col">
+                    {/* Session Overview Header */}
+                    <div className="px-8 py-6 border-b border-slate-200 dark:border-slate-700">
+                      <h3 className="text-xl font-medium text-slate-800 dark:text-slate-200 tracking-wide mb-2">
+                        {selectedSession.sessionName}
+                      </h3>
+                      <p className="text-slate-600 dark:text-slate-400 font-light">{selectedSession.fileName}</p>
+                    </div>
+                    
+                    <ScrollArea className="flex-1">
+                      <div className="p-8 space-y-8">
 
-                      <Separator />
-
-                      <div className="space-y-4">
-                        <div>
-                          <h4 className="font-medium mb-2">Session Statistics</h4>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <span className="text-muted-foreground">Total Duplicate Pairs:</span>
-                              <p className="font-medium">{selectedSession.totalDuplicatePairs}</p>
+                        {/* Executive Analytics Grid */}
+                        <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-600">
+                          <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-6 tracking-wide">Session Analytics</h4>
+                          <div className="grid grid-cols-2 gap-6">
+                            <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                              <div className="text-2xl font-bold text-slate-800 dark:text-slate-200">
+                                {selectedSession.totalDuplicatePairs.toLocaleString()}
+                              </div>
+                              <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Total Duplicate Pairs</div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Processed:</span>
-                              <p className="font-medium">{selectedSession.processedPairs} ({selectedSession.progressPercentage}%)</p>
+                            
+                            <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                                {selectedSession.processedPairs.toLocaleString()}
+                              </div>
+                              <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Records Processed</div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Remaining:</span>
-                              <p className="font-medium">{selectedSession.totalDuplicatePairs - selectedSession.processedPairs}</p>
+                            
+                            <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                              <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                                {(selectedSession.totalDuplicatePairs - selectedSession.processedPairs).toLocaleString()}
+                              </div>
+                              <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Records Remaining</div>
                             </div>
-                            <div>
-                              <span className="text-muted-foreground">Progress:</span>
-                              <div className="mt-1">
+                            
+                            <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                    {selectedSession.progressPercentage}%
+                                  </div>
+                                  <div className="text-sm text-slate-600 dark:text-slate-400 mt-1">Completion Rate</div>
+                                </div>
                                 {getProgressBadge(selectedSession.progressPercentage)}
                               </div>
                             </div>
                           </div>
                         </div>
 
-                        <div>
-                          <h4 className="font-medium mb-2">Timeline</h4>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex items-center">
-                              <Calendar className="w-4 h-4 mr-2 text-muted-foreground" />
-                              <span className="text-muted-foreground">Created:</span>
-                              <span className="ml-2">{formatDate(selectedSession.createdAt)}</span>
+                        {/* Executive Timeline */}
+                        <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 rounded-xl p-6 border border-slate-200 dark:border-slate-600">
+                          <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-6 tracking-wide">Session Timeline</h4>
+                          <div className="space-y-4">
+                            <div className="flex items-center p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg flex items-center justify-center mr-4">
+                                <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-slate-800 dark:text-slate-200">Session Created</div>
+                                <div className="text-sm text-slate-600 dark:text-slate-400">{formatDate(selectedSession.createdAt)}</div>
+                              </div>
                             </div>
-                            <div className="flex items-center">
-                              <Clock className="w-4 h-4 mr-2 text-muted-foreground" />
-                              <span className="text-muted-foreground">Last Accessed:</span>
-                              <span className="ml-2">{formatDate(selectedSession.lastAccessed)}</span>
+                            
+                            <div className="flex items-center p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+                              <div className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-lg flex items-center justify-center mr-4">
+                                <Clock className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-slate-800 dark:text-slate-200">Last Accessed</div>
+                                <div className="text-sm text-slate-600 dark:text-slate-400">{formatDate(selectedSession.lastAccessed)}</div>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
+                    </ScrollArea>
 
-                      <Separator />
-
-                      <div className="flex gap-3">
-                        <Button
+                    {/* Executive Action Panel */}
+                    <div className="p-8 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                      <div className="flex gap-4">
+                        <button
                           onClick={handleLoadSession}
                           disabled={isLoading}
-                          className="flex-1"
+                          className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-slate-400 disabled:to-slate-500 text-white font-semibold tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none flex items-center justify-center space-x-3"
                         >
                           {isLoading ? (
                             <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Loading Session...
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                              <span>Loading Session...</span>
                             </>
                           ) : (
-                            'Load Session'
+                            <span>Load Executive Session</span>
                           )}
-                        </Button>
-                        <Button variant="outline" onClick={onClose}>
+                        </button>
+                        
+                        <button
+                          onClick={onClose}
+                          className="px-6 py-3 rounded-xl bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium tracking-wide transition-all duration-300"
+                        >
                           Cancel
-                        </Button>
+                        </button>
                       </div>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-center">
-                      <div>
-                        <FileText className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                        <p className="text-muted-foreground">
-                          Select a session from the list to view details
-                        </p>
+                  </div>
+                ) : (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center px-8">
+                      <div className="w-16 h-16 mx-auto mb-6 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-800 rounded-2xl flex items-center justify-center">
+                        <FileText className="w-8 h-8 text-slate-600 dark:text-slate-400" />
                       </div>
+                      <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-3">Session Preview</h3>
+                      <p className="text-slate-600 dark:text-slate-400 leading-relaxed max-w-sm mx-auto">
+                        Select a session from the repository to view comprehensive analytics and management options.
+                      </p>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Executive Deletion Confirmation */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
-              <AlertTriangle className="w-5 h-5" />
-              Delete Session
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-2">
-              <p>
-                This action cannot be undone. This will permanently delete the session
-                <span className="font-semibold"> "{sessionToDelete?.sessionName}"</span> and all associated data.
-              </p>
-              <p>
-                Type <span className="font-mono bg-muted px-1 rounded">{sessionToDelete?.sessionName}</span> to confirm:
-              </p>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="my-4">
-            <Input
-              value={confirmationText}
-              onChange={(e) => setConfirmationText(e.target.value)}
-              placeholder="Type session name here..."
-              className="font-mono"
-            />
+        <AlertDialogContent className="max-w-2xl bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700">
+          {/* Executive Warning Header */}
+          <div className="relative bg-gradient-to-r from-red-600 via-red-500 to-red-600 dark:from-red-700 dark:via-red-600 dark:to-red-700 -m-6 mb-0 p-6 rounded-t-lg">
+            <div className="absolute inset-0 bg-gradient-to-r from-red-900/20 via-red-800/10 to-red-900/20" />
+            <AlertDialogHeader className="relative">
+              <AlertDialogTitle className="flex items-center gap-3 text-white text-xl font-light tracking-wide">
+                <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                Critical System Operation
+              </AlertDialogTitle>
+            </AlertDialogHeader>
           </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setConfirmationText("")}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={confirmationText !== sessionToDelete?.sessionName || deleting}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              {deleting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                'Delete Session'
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
+          
+          <div className="p-8">
+            <AlertDialogDescription className="space-y-6">
+              <div className="text-center">
+                <h3 className="text-lg font-medium text-slate-800 dark:text-slate-200 mb-3">
+                  Permanent Session Deletion
+                </h3>
+                <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
+                  This operation will permanently and irreversibly delete the session
+                  <span className="font-semibold text-slate-800 dark:text-slate-200"> "{sessionToDelete?.sessionName}"</span> and all associated analytical data.
+                </p>
+              </div>
+              
+              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
+                <h4 className="font-medium text-amber-800 dark:text-amber-200 mb-2">Executive Confirmation Required</h4>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mb-4">
+                  Type the exact session name below to authorize this destructive operation:
+                </p>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-lg p-3 font-mono text-sm text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-600">
+                    {sessionToDelete?.sessionName}
+                  </div>
+                  <button
+                    onClick={copySessionName}
+                    className="flex items-center justify-center w-10 h-10 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-lg border border-slate-300 dark:border-slate-600 transition-all duration-200"
+                    title={copied ? "Copied!" : "Copy session name"}
+                  >
+                    {copied ? (
+                      <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <Copy className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </AlertDialogDescription>
+            
+            <div className="mt-6">
+              <input
+                type="text"
+                value={confirmationText}
+                onChange={(e) => setConfirmationText(e.target.value)}
+                placeholder="Enter session name for confirmation..."
+                className="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl font-mono text-slate-700 dark:text-slate-300 placeholder-slate-400 focus:outline-none focus:border-red-500 dark:focus:border-red-400 focus:ring-2 focus:ring-red-500/20 transition-all duration-300"
+              />
+            </div>
+            
+            <AlertDialogFooter className="mt-8 flex gap-4">
+              <button
+                onClick={() => setConfirmationText("")}
+                className="flex-1 px-6 py-3 rounded-xl bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 font-medium tracking-wide transition-all duration-300"
+              >
+                Cancel Operation
+              </button>
+              
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={confirmationText !== sessionToDelete?.sessionName || deleting}
+                className="flex-1 px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 disabled:from-slate-400 disabled:to-slate-500 text-white font-semibold tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none flex items-center justify-center space-x-3"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Executing Deletion...</span>
+                  </>
+                ) : (
+                  <span>Authorize Deletion</span>
+                )}
+              </button>
+            </AlertDialogFooter>
+          </div>
         </AlertDialogContent>
       </AlertDialog>
     </>

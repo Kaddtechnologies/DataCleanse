@@ -2,13 +2,34 @@
 
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { History, Moon, Sun, Database } from "lucide-react";
+import { History, Moon, Sun, Database, TestTube } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { SessionLoadingDialog } from "@/components/session-loading-dialog";
+
+// Helper function to format time ago
+const formatTimeAgo = (date: Date): string => {
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (diffInSeconds < 60) {
+    return 'just now';
+  } else if (diffInSeconds < 3600) {
+    const minutes = Math.floor(diffInSeconds / 60);
+    return `${minutes}m ago`;
+  } else if (diffInSeconds < 86400) {
+    const hours = Math.floor(diffInSeconds / 3600);
+    return `${hours}h ago`;
+  } else {
+    const days = Math.floor(diffInSeconds / 86400);
+    return `${days}d ago`;
+  }
+};
 
 interface AppHeaderProps {
   onLoadPreviousSession?: (sessionId: string) => void;
   sessionId?: string;
+  sessionStatus?: 'none' | 'ready' | 'active';
+  lastSaved?: Date | null;
 }
 
 /**
@@ -34,12 +55,13 @@ function ThemeToggle() {
   );
 }
 
-export function AppHeader({ onLoadPreviousSession, sessionId }: AppHeaderProps) {
+export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, lastSaved }: AppHeaderProps) {
   const { theme } = useTheme();
   const logoSrc = theme === "dark" ? "/flowserve_logo_white.svg" : "/flowserve_logo_white.svg";
   const [hasAvailableSessions, setHasAvailableSessions] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [loadingSession, setLoadingSession] = useState(false);
+  const [showSessionManager, setShowSessionManager] = useState(false);
 
   // Check if there are available sessions when component mounts
   useEffect(() => {
@@ -116,31 +138,56 @@ export function AppHeader({ onLoadPreviousSession, sessionId }: AppHeaderProps) 
                     <div className="absolute inset-0 rounded-full bg-white/20 scale-0 group-hover:scale-110 transition-transform duration-300" />
                   </div>
                   <span className="text-sm font-medium text-white/90 group-hover:text-white transition-colors duration-300 tracking-wide">
-                    Sessions
+                    Load Session
                   </span>
                 </div>
                 <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/5 via-white/10 to-white/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <div className="absolute inset-0 rounded-xl shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </button>
             )}
+            
+            <div className="w-px h-6 bg-white/15" />
+            
+            {/* Compact Session Status */}
+            {sessionStatus === 'active' ? (
+              <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500/15 to-emerald-600/10 border border-emerald-400/30 backdrop-blur-sm">
+                <div className="relative">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-sm" style={{ animationDuration: '1.5s' }} />
+                  <div className="absolute inset-0 w-2 h-2 bg-emerald-400/40 rounded-full animate-ping" style={{ animationDuration: '2s' }} />
+                </div>
+                <span className="text-xs font-medium text-emerald-300 tracking-wide">
+                  Active Session
+                </span>
+              </div>
+            ) : sessionStatus === 'ready' ? (
+              <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500/15 to-blue-600/10 border border-blue-400/30 backdrop-blur-sm">
+                <div className="w-2 h-2 bg-blue-400 rounded-full shadow-sm" />
+                <span className="text-xs font-medium text-blue-300 tracking-wide">
+                  Ready to Process
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-slate-600/15 to-slate-700/10 border border-slate-500/25 backdrop-blur-sm">
+                <div className="w-2 h-2 bg-slate-400 rounded-full opacity-50" />
+                <span className="text-xs font-medium text-slate-400 tracking-wide">
+                  No Session
+                </span>
+              </div>
+            )}
+            
+            {/* Last Saved Indicator - Only show after first save */}
+            {lastSaved && (
+              <div className="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-500/15 to-purple-600/10 border border-purple-400/25 backdrop-blur-sm">
+                <div className="w-2 h-2 bg-purple-400 rounded-full opacity-75" />
+                <span className="text-xs font-medium text-purple-300 tracking-wide">
+                  Saved {formatTimeAgo(lastSaved)}
+                </span>
+              </div>
+            )}
+            
             <div className="w-px h-6 bg-white/15" />
             <ThemeToggle />
           </div>
-        </div>
-
-        {/* Executive Subtitle */}
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-sm font-light text-white/70 tracking-wide">
-            Intelligent ERP Data Cleanser
-          </p>
-          {sessionId && (
-            <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-              <span className="text-xs font-medium text-emerald-400">
-                Session Active
-              </span>
-            </div>
-          )}
         </div>
       </div>
       
@@ -150,7 +197,8 @@ export function AppHeader({ onLoadPreviousSession, sessionId }: AppHeaderProps) 
         onClose={() => setSessionDialogOpen(false)}
         onLoadSession={handleLoadSession}
         isLoading={loadingSession}
-      />
+      />    
+     
     </header>
   );
 }
