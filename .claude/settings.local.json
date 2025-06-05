@@ -1,3 +1,16 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(chmod:*)",
+      "Bash(ls:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker compose:*)",
+      "Bash(sudo docker compose:*)",
+      "Bash(PGPASSWORD=mdm_password123 psql -h localhost -U mdm_user -d mdm_dedup -f scripts/fix-session-config-constraint.sql)",
+      "Bash(./scripts/run-tests.sh:*)",
+      "Bash(node:*)"
+    ]
+  },
   "enableAllProjectMcpServers": false
 }

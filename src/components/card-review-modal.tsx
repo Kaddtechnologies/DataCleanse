@@ -3,6 +3,7 @@
 import type { DuplicatePair, CustomerRecord } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { AiAnalysisDisplay } from './ai-analysis-display';
@@ -55,7 +56,8 @@ const DiffRecordDetail = ({
   comparisonType, 
   comparisonNote,
   similarity,
-  showIfEmpty = false 
+  showIfEmpty = false,
+  fieldName
 }: {
   icon: React.ElementType,
   label: string,
@@ -63,18 +65,24 @@ const DiffRecordDetail = ({
   comparisonType: 'identical' | 'different' | 'similar' | 'one-empty' | 'both-empty',
   comparisonNote?: string,
   similarity?: number,
-  showIfEmpty?: boolean
+  showIfEmpty?: boolean,
+  fieldName?: string
 }) => {
   if (!value && !showIfEmpty && comparisonType !== 'one-empty') return null;
   
+  // Don't highlight TPI and Row Number fields
+  const shouldHighlight = fieldName && !['tpi', 'rowNumber'].includes(fieldName);
+  
   const getIndicatorIcon = () => {
+    if (!shouldHighlight) return null;
+    
     switch (comparisonType) {
       case 'identical':
-        return <CheckCircle className="w-3 h-3 text-green-600" />;
+        return <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />;
       case 'similar':
         return <AlertCircle className="w-3 h-3 text-amber-500" />;
       case 'different':
-        return <Minus className="w-3 h-3 text-blue-500" />;
+        return <Minus className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />;
       case 'one-empty':
         return <Minus className="w-3 h-3 text-gray-400" />;
       default:
@@ -83,15 +91,17 @@ const DiffRecordDetail = ({
   };
   
   const getContainerStyles = () => {
+    if (!shouldHighlight) return "";
+    
     switch (comparisonType) {
       case 'identical':
-        return "bg-green-50 border-l-2 border-green-300 pl-3 py-1 rounded-r";
+        return "bg-green-50 dark:bg-green-950/20 border-l-2 border-green-200 dark:border-green-800 pl-3 py-1 rounded-r";
       case 'similar':
-        return "bg-amber-50 border-l-2 border-amber-300 pl-3 py-1 rounded-r";
+        return "bg-amber-50 dark:bg-amber-950/20 border-l-2 border-amber-200 dark:border-amber-800 pl-3 py-1 rounded-r";
       case 'different':
-        return "bg-blue-50 border-l-2 border-blue-300 pl-3 py-1 rounded-r";
+        return "bg-yellow-50 dark:bg-yellow-950/20 border-l-2 border-yellow-200 dark:border-yellow-800 pl-3 py-1 rounded-r";
       case 'one-empty':
-        return "bg-gray-50 border-l-2 border-gray-300 pl-3 py-1 rounded-r";
+        return "bg-gray-50 dark:bg-gray-950/20 border-l-2 border-gray-200 dark:border-gray-800 pl-3 py-1 rounded-r";
       default:
         return "";
     }
@@ -106,11 +116,11 @@ const DiffRecordDetail = ({
           {getIndicatorIcon()}
         </div>
         <div className="mt-0.5">
-          <span className="break-words">{value !== undefined && value !== null ? String(value) : "N/A"}</span>
-          {comparisonNote && (
+          <span className="break-words text-foreground">{value !== undefined && value !== null ? String(value) : "N/A"}</span>
+          {comparisonNote && shouldHighlight && (
             <span className="text-xs text-muted-foreground ml-2">({comparisonNote})</span>
           )}
-          {similarity && (
+          {similarity && shouldHighlight && (
             <span className="text-xs text-muted-foreground ml-2">
               ({Math.round(similarity * 100)}% similar)
             </span>
@@ -149,18 +159,18 @@ const CustomerRecordCard = ({
         <CardDescription className="text-base">
           {record.name}
           {isInvalid && (
-            <span className="ml-2 text-sm text-red-500">(invalid value)</span>
+            <span className="ml-2 text-sm text-red-500 dark:text-red-400">(invalid value)</span>
           )}
         </CardDescription>
         
         {/* Simplified Invalid Name Warning */}
         {isInvalid && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-3 mt-3">
+          <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-md p-3 mt-3">
             <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="h-4 w-4 text-red-500 dark:text-red-400 mt-0.5 flex-shrink-0" />
               <div className="text-sm">
-                <p className="text-red-700 font-medium">Invalid Name Detected</p>
-                <p className="text-red-600 mt-1">{getInvalidNameReason(record)}</p>
+                <p className="text-red-700 dark:text-red-300 font-medium">Invalid Name Detected</p>
+                <p className="text-red-600 dark:text-red-400 mt-1">{getInvalidNameReason(record)}</p>
               </div>
             </div>
           </div>
@@ -169,7 +179,7 @@ const CustomerRecordCard = ({
       <CardContent className="space-y-3">
         {/* Basic Information Section */}
         <div className="space-y-2 mb-4">
-          <h3 className="text-sm font-semibold">Basic Information</h3>
+          <h3 className="text-sm font-semibold text-foreground">Basic Information</h3>
           {isComparing && comparisons ? (
             <>
               <DiffRecordDetail 
@@ -179,6 +189,7 @@ const CustomerRecordCard = ({
                 comparisonType={comparisons.name?.type || 'different'}
                 comparisonNote={comparisons.name?.note}
                 similarity={comparisons.name?.similarity}
+                fieldName={comparisons.name?.fieldName}
               />
               <DiffRecordDetail 
                 icon={MapPin} 
@@ -187,6 +198,7 @@ const CustomerRecordCard = ({
                 comparisonType={comparisons.address?.type || 'different'}
                 comparisonNote={comparisons.address?.note}
                 similarity={comparisons.address?.similarity}
+                fieldName={comparisons.address?.fieldName}
               />
               <DiffRecordDetail 
                 icon={MapPin} 
@@ -195,6 +207,7 @@ const CustomerRecordCard = ({
                 comparisonType={comparisons.city?.type || 'different'}
                 comparisonNote={comparisons.city?.note}
                 similarity={comparisons.city?.similarity}
+                fieldName={comparisons.city?.fieldName}
                 showIfEmpty={true} 
               />
               <DiffRecordDetail 
@@ -203,6 +216,7 @@ const CustomerRecordCard = ({
                 value={record.country} 
                 comparisonType={comparisons.country?.type || 'different'}
                 comparisonNote={comparisons.country?.note}
+                fieldName={comparisons.country?.fieldName}
                 showIfEmpty={true} 
               />
               <DiffRecordDetail 
@@ -211,6 +225,7 @@ const CustomerRecordCard = ({
                 value={record.tpi} 
                 comparisonType={comparisons.tpi?.type || 'different'}
                 comparisonNote={comparisons.tpi?.note}
+                fieldName={comparisons.tpi?.fieldName}
                 showIfEmpty={true} 
               />
               <DiffRecordDetail 
@@ -219,6 +234,7 @@ const CustomerRecordCard = ({
                 value={record.rowNumber} 
                 comparisonType={comparisons.rowNumber?.type || 'different'}
                 comparisonNote={comparisons.rowNumber?.note}
+                fieldName={comparisons.rowNumber?.fieldName}
                 showIfEmpty={true} 
               />
             </>
@@ -236,7 +252,7 @@ const CustomerRecordCard = ({
         
         {/* Similarity Scores Section */}
         <div className="space-y-2 mb-4">
-          <h3 className="text-sm font-semibold">Similarity Scores</h3>
+          <h3 className="text-sm font-semibold text-foreground">Similarity Scores</h3>
           <RecordDetail icon={PercentIcon} label="Name Score" value={record.name_score} showIfEmpty={true} />
           <RecordDetail icon={PercentIcon} label="Address Score" value={record.addr_score} showIfEmpty={true} />
           <RecordDetail icon={PercentIcon} label="City Score" value={record.city_score} showIfEmpty={true} />
@@ -247,7 +263,7 @@ const CustomerRecordCard = ({
         
         {/* Match Method Information Section */}
         <div className="space-y-2 mb-4">
-          <h3 className="text-sm font-semibold">Match Method Information</h3>
+          <h3 className="text-sm font-semibold text-foreground">Match Method Information</h3>
           <RecordDetail icon={BlockIcon} label="Block Type" value={record.blockType} showIfEmpty={true} />
           <RecordDetail icon={MethodIcon} label="Match Method" value={record.matchMethod} showIfEmpty={true} />
           <RecordDetail icon={MethodIcon} label="Best Name Match Method" value={record.bestNameMatchMethod} showIfEmpty={true} />
@@ -256,7 +272,7 @@ const CustomerRecordCard = ({
         
         {/* Confidence Information Section */}
         <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Confidence Information</h3>
+          <h3 className="text-sm font-semibold text-foreground">Confidence Information</h3>
           <RecordDetail
             icon={ConfidenceIcon}
             label="Low Confidence"
@@ -328,6 +344,24 @@ const ConfidenceIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+// Legend component for diff highlighting
+const DiffLegend = () => (
+  <div className="flex items-center gap-4 text-xs text-muted-foreground mb-4 p-3 bg-muted/30 rounded-lg">
+    <span className="font-medium text-foreground">Field Comparison:</span>
+    <div className="flex items-center gap-1">
+      <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
+      <span>Identical</span>
+    </div>
+    <div className="flex items-center gap-1">
+      <Minus className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
+      <span>Different</span>
+    </div>
+    <div className="flex items-center gap-1">
+      <AlertCircle className="w-3 h-3 text-amber-500" />
+      <span>Similar</span>
+    </div>
+  </div>
+);
 
 export function CardReviewModal({ 
   pair, 
@@ -340,6 +374,64 @@ export function CardReviewModal({
   onCacheAnalysis
 }: CardReviewModalProps) {
   if (!pair) return null;
+
+  // Database persistence
+  const { updateDuplicatePair } = useSessionPersistence();
+  
+  // Enhanced resolve handler that saves to database
+  const handleResolve = async (pairId: string, recordName: string, resolution: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
+    // Update local state first for immediate UI feedback
+    onResolve(pairId, recordName, resolution);
+    
+    // Save to database
+    try {
+      await updateDuplicatePair(pairId, { status: resolution });
+    } catch (error) {
+      console.error('Failed to save decision to database:', error);
+      // Could show a toast notification here for failed saves
+    }
+  };
+  
+  // Enhanced AI analysis complete handler that caches to database
+  const handleEnhancedAnalysisComplete = async (results: {
+    enhancedConfidence: string;
+    enhancedScore: number;
+    originalScore: number;
+    scoreChangeReason: string;
+    lastAnalyzed: string;
+  }) => {
+    // Update local state first
+    if (onEnhancedAnalysisComplete) {
+      onEnhancedAnalysisComplete(pair.id, results);
+    }
+    
+    // Save enhanced analysis to database
+    try {
+      await updateDuplicatePair(pair.id, {
+        enhancedConfidence: results.enhancedConfidence,
+        enhancedScore: results.enhancedScore
+      });
+    } catch (error) {
+      console.error('Failed to save enhanced analysis to database:', error);
+    }
+  };
+  
+  // Enhanced cache analysis handler that saves to database
+  const handleCacheAnalysis = async (analysis: any) => {
+    // Update local state first
+    if (onCacheAnalysis) {
+      onCacheAnalysis(pair.id, analysis);
+    }
+    
+    // Save cached analysis to database
+    try {
+      await updateDuplicatePair(pair.id, {
+        cachedAiAnalysis: analysis
+      });
+    } catch (error) {
+      console.error('Failed to cache analysis to database:', error);
+    }
+  };
 
   // Calculate comparisons between the two records
   const comparisons = compareRecords(pair.record1, pair.record2);
@@ -355,6 +447,8 @@ export function CardReviewModal({
                 Compare the two records below and decide on an action. Similarity Score: <span className="font-bold text-primary">{(pair.similarityScore * 100).toFixed(0)}%</span>
               </p>
             </DialogHeader>
+            
+            <DiffLegend />
             
             <div className="flex flex-col md:flex-row gap-6 mb-6">
               <CustomerRecordCard 
@@ -378,22 +472,22 @@ export function CardReviewModal({
               record2={pair.record2} 
               fuzzyScore={pair.similarityScore}
               analyzeFunction={onAnalyzeConfidence}
-              onAnalysisComplete={onEnhancedAnalysisComplete ? (results) => onEnhancedAnalysisComplete(pair.id, results) : undefined}
+              onAnalysisComplete={handleEnhancedAnalysisComplete}
               cachedAnalysis={pair.cachedAiAnalysis}
-              onCacheAnalysis={onCacheAnalysis ? (analysis) => onCacheAnalysis(pair.id, analysis) : undefined}
+              onCacheAnalysis={handleCacheAnalysis}
             />
 
             <div className="mt-8 flex flex-col sm:flex-row justify-between gap-4">
-              <Button variant="outline" onClick={() => onResolve(pair.id, pair.record1.name, 'skipped')} className="w-full sm:w-auto">
+              <Button variant="outline" onClick={() => handleResolve(pair.id, pair.record1.name, 'skipped')} className="w-full sm:w-auto">
                 <SkipForwardIcon className="w-4 h-4 mr-2" />
                 Skip
               </Button>
               <div className="flex flex-col sm:flex-row gap-2">
-                <Button variant="destructive" onClick={() => onResolve(pair.id, pair.record1.name, 'not_duplicate')} className="flex-1">
+                <Button variant="destructive" onClick={() => handleResolve(pair.id, pair.record1.name, 'not_duplicate')} className="flex-1">
                   <X className="w-4 h-4 mr-2" />
                   Not a Duplicate
                 </Button>
-                <Button onClick={() => onResolve(pair.id, pair.record1.name, 'duplicate')} className="flex-1 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white">
+                <Button onClick={() => handleResolve(pair.id, pair.record1.name, 'duplicate')} className="flex-1 bg-green-600 dark:bg-green-700 hover:bg-green-700 dark:hover:bg-green-800 text-white">
                   <Check className="w-4 h-4 mr-2" />
                   Mark as Duplicate
                 </Button>

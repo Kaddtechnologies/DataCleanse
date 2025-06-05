@@ -1,14 +1,17 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { DuplicatePair, CustomerRecord } from '@/types';
 import { AppHeader } from '@/components/layout/header';
 import { FileUpload } from '@/components/file-upload';
 import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
+import { SessionManager } from '@/components/session-manager';
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, CheckCircle, AlertTriangle, FileText } from 'lucide-react';
+import { Loader2, CheckCircle, AlertTriangle, FileText, Trash2 } from 'lucide-react';
+import { separateValidAndInvalidPairs } from '@/utils/record-validation';
+import { DeleteInvalidRecordsModal } from '@/components/delete-invalid-records-modal';
 import {
   Dialog,
   DialogContent,
@@ -44,6 +47,15 @@ export default function HomePage() {
   const [pairsToMerge, setPairsToMerge] = useState<DuplicatePair[]>([]);
   const [hasBulkMergedThisSession, setHasBulkMergedThisSession] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  
+  // Session management state
+  const [showSessionManager, setShowSessionManager] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionMetadata, setSessionMetadata] = useState<Record<string, any> | null>(null);
+  
+  // Invalid records state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchAiAnalysisForPair = async (pairInput: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>): Promise<Partial<DuplicatePair>> => {
     // Decide if AI analysis should run (e.g., based on score or if not already analyzed)
@@ -81,6 +93,11 @@ export default function HomePage() {
   const handleFileProcessed = async (apiResponse: any) => {
     setIsLoadingData(true);
     setSelectedRowIds(new Set()); // Clear selection on new file
+    
+    // Store session information from response
+    if (apiResponse.sessionId) {
+      setCurrentSessionId(apiResponse.sessionId);
+    }
     setHasBulkMergedThisSession(false); // Reset bulk merge flag for new upload
 
     try {
@@ -161,6 +178,27 @@ export default function HomePage() {
       });
     } finally {
       setIsLoadingData(false);
+    }
+  };
+
+  // Session management handlers
+  const handleSessionLoad = (sessionData: any) => {
+    try {
+      setCurrentSessionId(sessionData.session.id);
+      setSessionMetadata(sessionData.session);
+      setDuplicateData(sessionData.duplicate_pairs || []);
+      
+      toast({
+        title: "Session Restored",
+        description: `Loaded ${sessionData.duplicate_pairs?.length || 0} duplicate pairs from "${sessionData.session.session_name}"`
+      });
+    } catch (error) {
+      console.error('Error loading session:', error);
+      toast({
+        title: "Error Loading Session",
+        description: "Failed to restore session data",
+        variant: "destructive"
+      });
     }
   };
 
@@ -359,6 +397,26 @@ export default function HomePage() {
     );
   };
 
+  // Separate valid and invalid pairs
+  const { validPairs, invalidPairs } = useMemo(() => 
+    separateValidAndInvalidPairs(duplicateData || []), [duplicateData]
+  );
+
+  // Handle deleting invalid records from modal
+  const handleDeleteInvalidRecordsFromModal = async (pairIds: string[]) => {
+    if (!pairIds || pairIds.length === 0) return;
+    
+    setIsDeleting(true);
+    try {
+      await handleDeleteInvalidRecords(pairIds);
+      setShowDeleteModal(false);
+    } catch (error) {
+      console.error('Error deleting invalid records:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Handle deleting invalid records
   const handleDeleteInvalidRecords = async (pairIds: string[]) => {
     try {
@@ -396,7 +454,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <AppHeader />
+      <AppHeader onLoadPreviousSession={() => setShowSessionManager(true)} />
       <main className="container mx-auto p-4 md:p-8 space-y-8 flex-grow">
         <section aria-labelledby="file-upload-heading">
           <h2 id="file-upload-heading" className="sr-only">File Upload</h2>
@@ -441,7 +499,7 @@ export default function HomePage() {
                   <Button
                     variant="default"
                     size="sm"
-                    className="bg-green-600 hover:bg-green-700 text-white shadow-sm px-4 py-2 font-medium"
+                    className="bg-green hover:bg-green-700 text-white shadow-sm px-4 py-2 font-medium"
                     onClick={handleBulkMerge}
                     disabled={isBulkMerging || hasBulkMergedThisSession}
                   >
@@ -475,7 +533,7 @@ export default function HomePage() {
                   <Button
                     variant="default"
                     size="sm"
-                    className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm px-4 py-2 font-medium"
+                    className="bg-blue hover:bg-blue-700 text-white shadow-sm px-4 py-2 font-medium"
                     onClick={handleExportDecisionReport}
                     disabled={!duplicateData || duplicateData.length === 0 || isExporting}
                   >
@@ -492,6 +550,40 @@ export default function HomePage() {
                     )}
                   </Button>
                 </div>
+
+                {/* Invalid Records Section */}
+                {invalidPairs.length > 0 && (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                        <h3 className="font-medium text-sm text-red-800 dark:text-red-200">Invalid Records Detected</h3>
+                      </div>
+                      <p className="text-xs text-red-700 dark:text-red-300">
+                        Found {invalidPairs.length} duplicate pair{invalidPairs.length !== 1 ? 's' : ''} with invalid names (empty, NaN, null, or undefined).
+                      </p>
+                    </div>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      className="bg-red hover:bg-red-100 dark:hover:bg-red-900/30 text-white shadow-sm px-4 py-2 font-medium"
+                      onClick={() => setShowDeleteModal(true)}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Clean Up Invalid Records
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -505,6 +597,7 @@ export default function HomePage() {
                 onToggleRowSelection={handleToggleRowSelection}
                 onToggleSelectAll={handleToggleSelectAll}
                 onDeleteInvalidRecords={handleDeleteInvalidRecords}
+                sessionId={currentSessionId || undefined}
               />
              
             </section>
@@ -563,6 +656,17 @@ export default function HomePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Invalid Records Modal */}
+      {showDeleteModal && (
+        <DeleteInvalidRecordsModal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirmDelete={handleDeleteInvalidRecordsFromModal}
+          invalidPairs={invalidPairs}
+          isDeleting={isDeleting}
+        />
+      )}
       
        <footer className="py-6 text-center text-sm text-muted-foreground border-t">
          © {new Date().getFullYear()} Powered by Flowserve AI. All rights reserved.

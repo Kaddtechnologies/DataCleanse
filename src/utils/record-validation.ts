@@ -118,17 +118,18 @@ export function compareValues(value1: any, value2: any, fieldName: string): {
   type: 'identical' | 'different' | 'similar' | 'one-empty' | 'both-empty';
   similarity?: number;
   note?: string;
+  fieldName: string;
 } {
   // Handle null/undefined/empty values
   const isEmpty1 = !value1 || String(value1).trim() === '';
   const isEmpty2 = !value2 || String(value2).trim() === '';
   
   if (isEmpty1 && isEmpty2) {
-    return { type: 'both-empty' };
+    return { type: 'both-empty', fieldName };
   }
   
   if (isEmpty1 || isEmpty2) {
-    return { type: 'one-empty' };
+    return { type: 'one-empty', fieldName };
   }
   
   const str1 = String(value1).trim().toLowerCase();
@@ -138,14 +139,14 @@ export function compareValues(value1: any, value2: any, fieldName: string): {
   if (str1 === str2) {
     // Special case for TPI - highlight if same (rare case)
     if (fieldName === 'tpi') {
-      return { type: 'identical', note: 'Same TPI (unusual - should be unique)' };
+      return { type: 'identical', note: 'Same TPI (unusual - should be unique)', fieldName };
     }
-    return { type: 'identical' };
+    return { type: 'identical', fieldName };
   }
   
   // For TPI, different is expected and normal
   if (fieldName === 'tpi') {
-    return { type: 'different', note: 'Different TPI (expected)' };
+    return { type: 'different', note: 'Different TPI (expected)', fieldName };
   }
   
   // Calculate similarity for text fields
@@ -153,13 +154,13 @@ export function compareValues(value1: any, value2: any, fieldName: string): {
     const similarity = calculateStringSimilarity(str1, str2);
     
     if (similarity > 0.8) {
-      return { type: 'similar', similarity, note: 'Very similar' };
+      return { type: 'similar', similarity, note: 'Very similar', fieldName };
     } else if (similarity > 0.6) {
-      return { type: 'similar', similarity, note: 'Somewhat similar' };
+      return { type: 'similar', similarity, note: 'Somewhat similar', fieldName };
     }
   }
   
-  return { type: 'different' };
+  return { type: 'different', fieldName };
 }
 
 /**

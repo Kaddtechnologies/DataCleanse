@@ -1,18 +1,18 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { DuplicatePair } from '@/types';
+import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2 } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2, Zap } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exportDuplicatePairsToExcel } from '@/utils/duplicate-pairs-export';
-import { checkPairForInvalidNames, separateValidAndInvalidPairs, getDisplayName } from '@/utils/record-validation';
-import { DeleteInvalidRecordsModal } from './delete-invalid-records-modal';
+import { checkPairForInvalidNames, getDisplayName } from '@/utils/record-validation';
 import {
   ColumnDef,
   flexRender,
@@ -110,7 +110,7 @@ interface InteractiveDataGridProps {
   selectedRowIds: Set<string>;
   onToggleRowSelection: (pairId: string) => void;
   onToggleSelectAll: () => void;
-  onDeleteInvalidRecords?: (pairIds: string[]) => void;
+  sessionId?: string; // Add session ID for database operations
 }
 
 const StatusBadge = ({ status }: { status: DuplicatePair['status'] }) => {
@@ -129,37 +129,50 @@ const StatusBadge = ({ status }: { status: DuplicatePair['status'] }) => {
   }
 };
 
-const AiConfidenceBadge = ({ confidence }: { confidence?: string }) => {
+const AiConfidenceBadge = ({ confidence, isEnhanced = false }: { confidence?: string; isEnhanced?: boolean }) => {
   if (!confidence) {
     return <span className="text-xs text-muted-foreground">-</span>;
   }
 
   let badgeVariant: "default" | "secondary" | "outline" | "destructive" = "outline";
   let className = "";
+  let iconColor = "";
 
   switch (confidence.toLowerCase()) {
     case 'high':
       badgeVariant = "default";
       className = "bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700";
+      iconColor = "text-white dark:text-white"; // White on green background
       break;
     case 'medium':
       badgeVariant = "secondary";
-      className = "bg-yellow-500 dark:bg-yellow-600 hover:bg-yellow-600 dark:hover:bg-yellow-700 text-black dark:text-white"; // Ensure contrast for yellow
+      className = "bg-yellow-500 dark:bg-yellow-600 hover:bg-yellow-600 dark:hover:bg-yellow-700 text-black dark:text-white";
+      iconColor = "text-black dark:text-white"; // Black on yellow for contrast
       break;
     case 'low':
-      badgeVariant = "destructive"; // Using destructive for low for better visual cue
+      badgeVariant = "destructive";
+      iconColor = "text-white dark:text-white"; // White on red background
       break;
     case 'error':
       badgeVariant = "destructive";
       className = "bg-red-700 dark:bg-red-800 hover:bg-red-800 dark:hover:bg-red-900";
+      iconColor = "text-white dark:text-white"; // White on red background
       break;
-    default: // For any other unexpected values
+    default:
       badgeVariant = "outline";
+      iconColor = "text-foreground dark:text-foreground"; // Follows text color
   }
 
   return (
-    <Badge variant={badgeVariant} className={className}>
+    <Badge 
+      variant={badgeVariant} 
+      className={`${className} ${isEnhanced ? 'ring-2 ring-blue-400/50 dark:ring-blue-500/50' : ''}`}
+      title={isEnhanced ? "Confidence enhanced by smart business rules" : undefined}
+    >
       {confidence}
+      {isEnhanced && (
+        <Zap className={`w-3 h-3 ml-1 ${iconColor}`} />
+      )}
     </Badge>
   );
 };
@@ -171,20 +184,35 @@ export function InteractiveDataGrid({
   selectedRowIds,
   onToggleRowSelection,
   onToggleSelectAll,
-  onDeleteInvalidRecords
+  sessionId
 }: InteractiveDataGridProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   
-  // Separate valid and invalid pairs
-  const { validPairs, invalidPairs } = useMemo(() => 
-    separateValidAndInvalidPairs(data || []), [data]
-  );
+  
+  // Database persistence
+  const { updateDuplicatePair } = useSessionPersistence();
+  
+  // Enhanced status update handler that saves to database
+  const handleStatusUpdate = async (pairId: string, status: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
+    // Update local state first for immediate UI feedback
+    onUpdatePairStatus(pairId, status);
+    
+    // Save to database if session ID is available
+    if (sessionId) {
+      try {
+        await updateDuplicatePair(pairId, { status });
+      } catch (error) {
+        console.error('Failed to save status to database:', error);
+        // Could show a toast notification here for failed saves
+      }
+    }
+  };
+  
+  
 
   // Filter data based on status and confidence filters
   const filteredData = useMemo(() => {
@@ -203,20 +231,7 @@ export function InteractiveDataGrid({
     });
   }, [data, statusFilter, confidenceFilter]);
 
-  // Handle deleting invalid records
-  const handleDeleteInvalidRecords = async (pairIds: string[]) => {
-    if (!onDeleteInvalidRecords) return;
-    
-    setIsDeleting(true);
-    try {
-      await onDeleteInvalidRecords(pairIds);
-      setShowDeleteModal(false);
-    } catch (error) {
-      console.error('Error deleting invalid records:', error);
-    } finally {
-      setIsDeleting(false);
-    }
-  };
+  
 
   const columns: ColumnDef<DuplicatePair>[] = [
     {
@@ -251,7 +266,7 @@ export function InteractiveDataGrid({
             <div className={`font-medium ${record1Invalid ? 'text-red-600' : ''}`}>
               {row.original.record1.name}
               {record1Invalid && (
-                <span className="ml-2 text-xs text-red-500 font-normal">(invalid)</span>
+                <span className="ml-2 text-xs text-red-500 font-normal">(invalid name)</span>
               )}
             </div>
             <div className="text-xs text-muted-foreground mt-1">{row.original.record1.address}</div>
@@ -263,11 +278,6 @@ export function InteractiveDataGrid({
               <Badge variant="outline" className="text-xs bg-muted">
                 Row: {row.original.record1.rowNumber || 'N/A'}
               </Badge>
-              {record1Invalid && (
-                <Badge variant="secondary" className="text-xs text-red-600 bg-red-50 border-red-200">
-                  Invalid Name
-                </Badge>
-              )}
             </div>
           </div>
         );
@@ -284,7 +294,7 @@ export function InteractiveDataGrid({
             <div className={`font-medium ${record2Invalid ? 'text-red-600' : ''}`}>
               {row.original.record2.name}
               {record2Invalid && (
-                <span className="ml-2 text-xs text-red-500 font-normal">(invalid)</span>
+                <span className="ml-2 text-xs text-red-500 font-normal">(invalid name)</span>
               )}
             </div>
             <div className="text-xs text-muted-foreground mt-1">{row.original.record2.address}</div>
@@ -296,11 +306,6 @@ export function InteractiveDataGrid({
               <Badge variant="outline" className="text-xs bg-muted">
                 Row: {row.original.record2.rowNumber || 'N/A'}
               </Badge>
-              {record2Invalid && (
-                <Badge variant="secondary" className="text-xs text-red-600 bg-red-50 border-red-200">
-                  Invalid Name
-                </Badge>
-              )}
             </div>
           </div>
         );
@@ -355,14 +360,7 @@ export function InteractiveDataGrid({
         
         return (
           <div className="text-center">
-            <div className="flex flex-col items-center gap-1">
-              <AiConfidenceBadge confidence={confidence} />
-              {isEnhanced && (
-                <span className="text-xs text-blue-600 font-medium" title="Confidence enhanced by smart business rules">
-                  Smart Enhanced
-                </span>
-              )}
-            </div>
+            <AiConfidenceBadge confidence={confidence} isEnhanced={isEnhanced} />
           </div>
         );
       },
@@ -380,14 +378,49 @@ export function InteractiveDataGrid({
       id: "actions",
       cell: ({ row }) => (
         <div className="text-right">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onReviewPair(row.original)}
-          >
-            <Eye className="w-4 h-4 mr-1 md:mr-2" />
-            <span className="hidden md:inline">Review</span>
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onReviewPair(row.original)}
+            >
+              <Eye className="w-4 h-4 mr-1 md:mr-2" />
+              <span className="hidden md:inline">Review</span>
+            </Button>
+            
+            {/* Quick action buttons for faster processing */}
+            {row.original.status === 'pending' && (
+              <div className="hidden md:flex items-center gap-1 ml-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleStatusUpdate(row.original.id, 'duplicate')}
+                  className="text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 hover:text-green-700 dark:hover:text-green-300 h-8 w-8 p-0"
+                  title="Mark as Duplicate"
+                >
+                  <CheckCircle className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleStatusUpdate(row.original.id, 'not_duplicate')}
+                  className="text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 h-8 w-8 p-0"
+                  title="Not a Duplicate"
+                >
+                  <XCircle className="w-3 h-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleStatusUpdate(row.original.id, 'skipped')}
+                  className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 hover:text-gray-700 dark:hover:text-gray-300 h-8 w-8 p-0"
+                  title="Skip"
+                >
+                  <SkipForward className="w-3 h-3" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       ),
     },
@@ -470,47 +503,11 @@ export function InteractiveDataGrid({
       <CardHeader>
         <CardTitle className="text-2xl font-semibold">Potential Duplicates Review</CardTitle>
         
-        {/* Invalid Records Warning */}
-        {invalidPairs.length > 0 && (
-          <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-red-100 rounded-full">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                </div>
-                <div>
-                  <h4 className="font-semibold text-red-800 text-base">
-                    {invalidPairs.length} Record{invalidPairs.length !== 1 ? 's' : ''} with Invalid Names
-                  </h4>
-                  <p className="text-sm text-red-700 mt-1">
-                    Found records with "nan", empty, or invalid name values that should be cleaned up.
-                  </p>
-                </div>
-              </div>
-              {onDeleteInvalidRecords && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowDeleteModal(true)}
-                  disabled={isDeleting}
-                  className="border-red-300 text-red-700 hover:bg-red-50 hover:border-red-400"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Clean Up Invalid Records
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+        
         
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
             Showing {filteredData.length} of {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
-            {invalidPairs.length > 0 && (
-              <span className="text-red-600 font-medium">
-                {" "}({invalidPairs.length} with invalid names)
-              </span>
-            )}
             {statusFilter !== "all" && ` (Status: ${statusFilter})`}
             {confidenceFilter !== "all" && ` (Confidence: ${confidenceFilter})`}
           </p>
@@ -624,14 +621,7 @@ export function InteractiveDataGrid({
         <DataTablePagination table={table} />
       </CardContent>
       
-      {/* Delete Invalid Records Modal */}
-      <DeleteInvalidRecordsModal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        onConfirmDelete={handleDeleteInvalidRecords}
-        invalidPairs={invalidPairs}
-        isDeleting={isDeleting}
-      />
+      
     </Card>
   );
 }

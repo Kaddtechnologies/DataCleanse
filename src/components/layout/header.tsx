@@ -1,9 +1,14 @@
 "use client";
 
 import React from "react";
-
+import { Button } from "@/components/ui/button";
+import { History } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Switch } from "@/components/ui/switch";
+
+interface AppHeaderProps {
+  onLoadPreviousSession?: () => void;
+}
 
 /**
  * Tiny theme toggle switch that sits at far-right of the header
@@ -26,14 +31,14 @@ function ThemeToggle() {
   );
 }
 
-export function AppHeader() {
+export function AppHeader({ onLoadPreviousSession }: AppHeaderProps) {
   const { theme } = useTheme();
   const logoSrc = theme === "dark" ? "/flowserve_logo_white.svg" : "/flowserve_logo_white.svg";
 
   return (
     <header className="bg-primary-gradient shadow-md">
       <div className="container mx-auto px-4 py-4 md:px-8 md:py-6">
-        {/* Row: Brand left, theme toggle right */}
+        {/* Row: Brand left, session/theme controls right */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <img
@@ -47,8 +52,21 @@ export function AppHeader() {
             </h1> */}
           </div>
 
-          {/* Unobtrusive toggle */}
-          <ThemeToggle />
+          {/* Controls: Sessions + Theme Toggle */}
+          <div className="flex items-center space-x-3">
+            {onLoadPreviousSession && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onLoadPreviousSession}
+                className="bg-white/10 border-white/20 text-white hover:bg-white/20 hover:border-white/30"
+              >
+                <History className="w-4 h-4 mr-2" />
+                Load Session
+              </Button>
+            )}
+            <ThemeToggle />
+          </div>
         </div>
 
         {/* Subtitle */}

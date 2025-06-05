@@ -1,9 +1,10 @@
 "use client";
 
 import type { DragEvent, ChangeEvent } from 'react';
-import { type JSX, useState, useEffect, useCallback, useRef } from 'react';
-import { UploadCloud, FileText, CheckCircle, ScanLine, ArrowRight, Brain, Eye, Merge, Users, Loader2, HelpCircle, BookOpen, Play, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { type JSX, useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { UploadCloud, FileText, CheckCircle, ScanLine, ArrowRight, Brain, Eye, Merge, Users, Loader2, HelpCircle, BookOpen, Play, X, ChevronRight, ChevronLeft, AlertTriangle, Trash2 } from 'lucide-react';
 import { LoadingOverlay } from '@/components/loading-overlay';
+import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +25,8 @@ import {
   validateRequiredMappings,
   type AutoMappingResult 
 } from '@/lib/canonical-field-mapping';
+import type { DuplicatePair } from '@/types';
+
 
 const API_BASE_URL = ''; // Use relative URL for Next.js API routes
 
@@ -60,6 +63,7 @@ type DeduplicationResponse = {
   message: string;
   results: DeduplicationResults;
   error: string | null;
+  sessionId?: string; // Add sessionId to response
 };
 
 interface FileUploadProps {
@@ -301,6 +305,17 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [isProcessing, setIsProcessing] = useState(false);
   const [rowCount, setRowCount] = useState<number | null>(null);
   const { toast } = useToast();
+  
+  // Database session management
+  const { 
+    createSession, 
+    saveDuplicatePairs, 
+    currentSession, 
+    isLoading: isDbLoading, 
+    error: dbError 
+  } = useSessionPersistence();
+  
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [columnHeaders, setColumnHeaders] = useState<string[]>([]);
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -322,6 +337,8 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [showInteractiveTour, setShowInteractiveTour] = useState(false);
   const [currentTourStep, setCurrentTourStep] = useState(0);
   const [tourHighlightedElement, setTourHighlightedElement] = useState<string | null>(null);
+  
+  
   
   // Refs for tour highlighting and file input
   const blockingSectionRef = useRef<HTMLDivElement>(null);
@@ -684,12 +701,34 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     setIsLoading(true);
     setError(null);
     
-    // Calculate and set estimated processing time
-    const estimatedTime = calculateEstimatedTime();
-    setEstimatedProcessingTime(estimatedTime);
-    setShowLoadingOverlay(true);
-
     try {
+      // Create database session first
+      const sessionName = `${file.name} - ${new Date().toLocaleString()}`;
+      const sessionId = await createSession(
+        sessionName,
+        file.name,
+        {
+          use_prefix: usePrefix,
+          use_metaphone: useMetaphone,
+          use_soundex: useSoundex,
+          use_ngram: useNgram,
+          use_ai: useAi,
+          name_threshold: nameThreshold,
+          overall_threshold: overallThreshold
+        }
+      );
+
+      if (!sessionId) {
+        throw new Error('Failed to create database session');
+      }
+
+      setCurrentSessionId(sessionId);
+      
+      // Calculate and set estimated processing time
+      const estimatedTime = calculateEstimatedTime();
+      setEstimatedProcessingTime(estimatedTime);
+      setShowLoadingOverlay(true);
+      
       // Process the file and prepare form data
       const processedFile = await convertCsvToUtf8(file);
       const formData = new FormData();
@@ -732,9 +771,75 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         throw new Error(responseData.message || responseData.error);
       }
 
-      // Update state with results
+      // Save duplicate pairs to database if we have a session
+      if (sessionId && responseData.results.duplicates && responseData.results.duplicates.length > 0) {
+        console.log('Raw duplicates from backend:', responseData.results.duplicates.slice(0, 2)); // Log first 2 for debugging
+        
+        // Transform backend duplicate format to DuplicatePair format
+        const transformedDuplicates: DuplicatePair[] = responseData.results.duplicates.map((duplicate: any, index: number) => ({
+          id: `temp-${index}`, // Temporary ID, will be replaced by database
+          record1: duplicate.record1 || duplicate.Record1 || duplicate.master_record || duplicate.left_record || {},
+          record2: duplicate.record2 || duplicate.Record2 || duplicate.duplicate_record || duplicate.right_record || {},
+          similarityScore: duplicate.similarityScore || duplicate.similarity_score || duplicate.score || 0,
+          status: 'pending' as const,
+          aiConfidence: duplicate.aiConfidence || duplicate.ai_confidence,
+          aiReasoning: duplicate.aiReasoning || duplicate.ai_reasoning,
+          enhancedConfidence: duplicate.enhancedConfidence || duplicate.enhanced_confidence,
+          enhancedScore: duplicate.enhancedScore || duplicate.enhanced_score,
+          originalScore: duplicate.originalScore || duplicate.original_score || (duplicate.similarityScore || duplicate.similarity_score || duplicate.score || 0) * 100
+        }));
+        
+        console.log('Transformed duplicates:', transformedDuplicates.slice(0, 2)); // Log first 2 transformed
+        
+        // Validate that we have valid records before saving
+        const validDuplicates = transformedDuplicates.filter(dup => {
+          const hasValidRecord1 = dup.record1 && Object.keys(dup.record1).length > 0;
+          const hasValidRecord2 = dup.record2 && Object.keys(dup.record2).length > 0;
+          const hasValidScore = typeof dup.similarityScore === 'number' && !isNaN(dup.similarityScore);
+          
+          if (!hasValidRecord1 || !hasValidRecord2 || !hasValidScore) {
+            console.warn('Filtering out invalid duplicate pair:', {
+              hasValidRecord1,
+              hasValidRecord2,
+              hasValidScore,
+              record1Keys: dup.record1 ? Object.keys(dup.record1) : [],
+              record2Keys: dup.record2 ? Object.keys(dup.record2) : [],
+              similarityScore: dup.similarityScore
+            });
+            return false;
+          }
+          return true;
+        });
+        
+        console.log(`Saving ${validDuplicates.length} valid pairs out of ${transformedDuplicates.length} transformed`);
+        
+        if (validDuplicates.length > 0) {
+          await saveDuplicatePairs(
+            sessionId,
+            validDuplicates,
+            { name: file.name, size: file.size },
+            {
+              use_prefix: usePrefix,
+              use_metaphone: useMetaphone,
+              use_soundex: useSoundex,
+              use_ngram: useNgram,
+              use_ai: useAi,
+              name_threshold: nameThreshold,
+              overall_threshold: overallThreshold
+            },
+            columnMap
+          );
+        } else {
+          console.warn('No valid duplicate pairs to save after transformation');
+        }
+      }
+      
+      // Update state with results and include session ID
       setDeduplicationResults(responseData);
-      onFileProcessed(responseData);
+      onFileProcessed({
+        ...responseData,
+        sessionId: sessionId
+      });
     } catch (error) {
       console.error("Deduplication API error:", error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process deduplication';
@@ -860,6 +965,8 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showHelpOptions]);
+
+  
 
   return (
     <>
@@ -1240,6 +1347,8 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
             Error: {error}
           </div>
         )}
+
+        
 
         {deduplicationResults && (
           <div className="mt-4 space-y-4">
