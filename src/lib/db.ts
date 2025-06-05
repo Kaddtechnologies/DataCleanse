@@ -416,6 +416,125 @@ export async function checkDatabaseHealth(): Promise<boolean> {
   }
 }
 
+// Check if session exists by filename
+export async function getSessionByFileName(fileName: string): Promise<UserSession | null> {
+  const client = await pool.connect();
+  try {
+    const query = 'SELECT * FROM user_sessions WHERE file_name = $1 ORDER BY created_at DESC LIMIT 1';
+    const result = await client.query(query, [fileName]);
+    return result.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+// Get session with processed records count
+export async function getSessionWithStats(sessionId: string): Promise<UserSession & { processed_pairs: number } | null> {
+  const client = await pool.connect();
+  try {
+    const query = `
+      SELECT 
+        s.*,
+        COALESCE(COUNT(CASE WHEN dp.status != 'pending' THEN 1 END), 0) as processed_pairs
+      FROM user_sessions s
+      LEFT JOIN duplicate_pairs dp ON s.id = dp.session_id
+      WHERE s.id = $1
+      GROUP BY s.id
+    `;
+    const result = await client.query(query, [sessionId]);
+    return result.rows[0] || null;
+  } finally {
+    client.release();
+  }
+}
+
+// Delete session and all related data
+export async function deleteSession(sessionId: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Delete in proper order to respect foreign key constraints
+    await client.query('DELETE FROM session_config WHERE session_id = $1', [sessionId]);
+    await client.query('DELETE FROM duplicate_pairs WHERE session_id = $1', [sessionId]);
+    await client.query('DELETE FROM file_uploads WHERE session_id = $1', [sessionId]);
+    await client.query('DELETE FROM user_sessions WHERE id = $1', [sessionId]);
+    
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Get next available filename with increment
+export async function getNextAvailableFilename(baseFileName: string): Promise<string> {
+  const client = await pool.connect();
+  try {
+    // Extract file extension
+    const lastDotIndex = baseFileName.lastIndexOf('.');
+    const name = lastDotIndex > 0 ? baseFileName.substring(0, lastDotIndex) : baseFileName;
+    const extension = lastDotIndex > 0 ? baseFileName.substring(lastDotIndex) : '';
+    
+    // Find existing sessions with similar names
+    const query = 'SELECT file_name FROM user_sessions WHERE file_name LIKE $1 ORDER BY file_name';
+    const pattern = `${name}%${extension}`;
+    const result = await client.query(query, [pattern]);
+    
+    const existingNames = new Set(result.rows.map(row => row.file_name));
+    
+    // If original name doesn't exist, return it
+    if (!existingNames.has(baseFileName)) {
+      return baseFileName;
+    }
+    
+    // Find the next available number
+    let counter = 1;
+    let newFileName;
+    do {
+      newFileName = `${name}(${counter})${extension}`;
+      counter++;
+    } while (existingNames.has(newFileName));
+    
+    return newFileName;
+  } finally {
+    client.release();
+  }
+}
+
+// Store original file data for row-by-row comparison
+export async function storeOriginalFileData(
+  sessionId: string,
+  fileData: Array<Record<string, any>>
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // Store as a single JSON document in session metadata
+    const query = `
+      UPDATE user_sessions 
+      SET metadata = metadata || jsonb_build_object('originalFileData', $1::jsonb)
+      WHERE id = $2
+    `;
+    await client.query(query, [JSON.stringify(fileData), sessionId]);
+  } finally {
+    client.release();
+  }
+}
+
+// Get original file data for row comparison
+export async function getOriginalFileData(sessionId: string): Promise<Array<Record<string, any>> | null> {
+  const client = await pool.connect();
+  try {
+    const query = "SELECT metadata->'originalFileData' as file_data FROM user_sessions WHERE id = $1";
+    const result = await client.query(query, [sessionId]);
+    return result.rows[0]?.file_data || null;
+  } finally {
+    client.release();
+  }
+}
+
 // Cleanup function for old sessions
 export async function cleanupOldSessions(daysOld: number = 30): Promise<number> {
   const client = await pool.connect();

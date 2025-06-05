@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from 'react';
 import type { DuplicatePair, CustomerRecord } from '@/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Check, X, SkipForwardIcon, User, Mail, Phone, MapPin, CheckCircle, Minu
 import { isInvalidNameRecord, getDisplayName, getInvalidNameReason, compareRecords, compareValues } from '@/utils/record-validation';
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertTriangle } from 'lucide-react';
+import { RowComparisonDialog } from '@/components/row-comparison-dialog';
 
 interface CardReviewModalProps {
   pair: DuplicatePair | null;
@@ -28,6 +30,7 @@ interface CardReviewModalProps {
     lastAnalyzed: string;
   }) => void;
   onCacheAnalysis?: (pairId: string, analysis: any) => void;
+  sessionId?: string;
 }
 
 const RecordDetail = ({ icon: Icon, label, value, showIfEmpty = false }: {
@@ -135,12 +138,14 @@ const CustomerRecordCard = ({
   record, 
   title, 
   comparisons,
-  isComparing = false 
+  isComparing = false,
+  onRowNumberClick
 }: { 
   record: CustomerRecord, 
   title: string,
   comparisons?: Record<string, ReturnType<typeof compareValues>>,
-  isComparing?: boolean
+  isComparing?: boolean,
+  onRowNumberClick?: (rowNumber: number | undefined) => void
 }) => {
   const isInvalid = isInvalidNameRecord(record);
   
@@ -228,15 +233,17 @@ const CustomerRecordCard = ({
                 fieldName={comparisons.tpi?.fieldName}
                 showIfEmpty={true} 
               />
-              <DiffRecordDetail 
-                icon={InfoIcon} 
-                label="Row Number" 
-                value={record.rowNumber} 
-                comparisonType={comparisons.rowNumber?.type || 'different'}
-                comparisonNote={comparisons.rowNumber?.note}
-                fieldName={comparisons.rowNumber?.fieldName}
-                showIfEmpty={true} 
-              />
+              <div className="flex items-start space-x-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors" onClick={() => onRowNumberClick?.(record.rowNumber)} title="Click to view row in Excel-like format">
+                <InfoIcon className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-muted-foreground">Row Number: </span>
+                  </div>
+                  <div className="mt-0.5">
+                    <span className="break-words text-primary hover:underline">{record.rowNumber !== undefined && record.rowNumber !== null ? String(record.rowNumber) : "N/A"}</span>
+                  </div>
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -245,7 +252,13 @@ const CustomerRecordCard = ({
               <RecordDetail icon={MapPin} label="City" value={record.city} showIfEmpty={true} />
               <RecordDetail icon={MapPin} label="Country" value={record.country} showIfEmpty={true} />
               <RecordDetail icon={InfoIcon} label="TPI Number" value={record.tpi} showIfEmpty={true} />
-              <RecordDetail icon={InfoIcon} label="Row Number" value={record.rowNumber} showIfEmpty={true} />
+              <div className="flex items-center space-x-2 text-sm cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors" onClick={() => onRowNumberClick?.(record.rowNumber)} title="Click to view row in Excel-like format">
+                <InfoIcon className="w-4 h-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                <div>
+                  <span className="font-medium text-muted-foreground">Row Number: </span>
+                  <span className="text-primary hover:underline">{record.rowNumber !== undefined && record.rowNumber !== null ? String(record.rowNumber) : "N/A"}</span>
+                </div>
+              </div>
             </>
           )}
         </div>
@@ -371,9 +384,14 @@ export function CardReviewModal({
   onResolve, 
   onAnalyzeConfidence,
   onEnhancedAnalysisComplete,
-  onCacheAnalysis
+  onCacheAnalysis,
+  sessionId
 }: CardReviewModalProps) {
   if (!pair) return null;
+  
+  // Row comparison dialog state
+  const [showRowComparison, setShowRowComparison] = useState(false);
+  const [comparisonRowNumbers, setComparisonRowNumbers] = useState<number[]>([]);
 
   // Database persistence
   const { updateDuplicatePair } = useSessionPersistence();
@@ -435,6 +453,18 @@ export function CardReviewModal({
 
   // Calculate comparisons between the two records
   const comparisons = compareRecords(pair.record1, pair.record2);
+  
+  // Handle row number clicks for comparison
+  const handleRowNumberClick = (rowNumbers: (number | undefined)[]) => {
+    const validRowNumbers = rowNumbers.filter((num): num is number => 
+      num !== undefined && num !== null && !isNaN(num)
+    );
+    
+    if (validRowNumbers.length > 0 && sessionId) {
+      setComparisonRowNumbers(validRowNumbers);
+      setShowRowComparison(true);
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -456,12 +486,14 @@ export function CardReviewModal({
                 title="Record 1" 
                 comparisons={comparisons}
                 isComparing={true}
+                onRowNumberClick={(rowNumber) => handleRowNumberClick([rowNumber])}
               />
               <CustomerRecordCard 
                 record={pair.record2} 
                 title="Record 2" 
                 comparisons={comparisons}
                 isComparing={true}
+                onRowNumberClick={(rowNumber) => handleRowNumberClick([rowNumber])}
               />
             </div>
 
@@ -502,6 +534,15 @@ export function CardReviewModal({
             </Button>
           </DialogClose> */}
       </DialogContent>
+      
+      {/* Row Comparison Dialog */}
+      <RowComparisonDialog
+        isOpen={showRowComparison}
+        onClose={() => setShowRowComparison(false)}
+        rowNumbers={comparisonRowNumbers}
+        sessionId={sessionId || ''}
+        title="Record Row Comparison"
+      />
     </Dialog>
   );
 }

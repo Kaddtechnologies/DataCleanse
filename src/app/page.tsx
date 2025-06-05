@@ -418,6 +418,39 @@ export default function HomePage() {
   };
 
   // Handle deleting invalid records
+  // Handle loading a session from the header
+  const handleLoadSession = async (sessionId: string) => {
+    try {
+      // Load session data from database
+      const response = await fetch(`/api/sessions/${sessionId}/load`);
+      if (!response.ok) {
+        throw new Error('Failed to load session');
+      }
+      
+      const sessionData = await response.json();
+      
+      // Update state with loaded session data
+      if (sessionData.duplicatePairs) {
+        setDuplicateData(sessionData.duplicatePairs);
+        setCurrentSessionId(sessionId);
+        setSessionMetadata(sessionData.metadata || {});
+        
+        toast({
+          title: "Session Loaded",
+          description: `Loaded session with ${sessionData.duplicatePairs.length} duplicate pairs.`,
+          variant: "default"
+        });
+      }
+    } catch (error) {
+      console.error('Error loading session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load session. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleDeleteInvalidRecords = async (pairIds: string[]) => {
     try {
       const deletedCount = pairIds.length;
@@ -454,11 +487,17 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <AppHeader onLoadPreviousSession={() => setShowSessionManager(true)} />
+      <AppHeader 
+        onLoadPreviousSession={handleLoadSession}
+        sessionId={currentSessionId || undefined}
+      />
       <main className="container mx-auto p-4 md:p-8 space-y-8 flex-grow">
         <section aria-labelledby="file-upload-heading">
           <h2 id="file-upload-heading" className="sr-only">File Upload</h2>
-          <FileUpload onFileProcessed={handleFileProcessed} />
+          <FileUpload 
+            onFileProcessed={handleFileProcessed}
+            onLoadSession={handleLoadSession}
+          />
         </section>
 
         {isLoadingData && (
@@ -596,7 +635,6 @@ export default function HomePage() {
                 selectedRowIds={selectedRowIds}
                 onToggleRowSelection={handleToggleRowSelection}
                 onToggleSelectAll={handleToggleSelectAll}
-                onDeleteInvalidRecords={handleDeleteInvalidRecords}
                 sessionId={currentSessionId || undefined}
               />
              
@@ -625,6 +663,7 @@ export default function HomePage() {
           onAnalyzeConfidence={handleAnalyzeConfidence}
           onEnhancedAnalysisComplete={handleEnhancedAnalysisComplete}
           onCacheAnalysis={handleCacheAnalysis}
+          sessionId={currentSessionId || undefined}
         />
       )}
       

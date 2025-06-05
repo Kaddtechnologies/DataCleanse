@@ -5,6 +5,7 @@ import { type JSX, useState, useEffect, useCallback, useRef, useMemo } from 'rea
 import { UploadCloud, FileText, CheckCircle, ScanLine, ArrowRight, Brain, Eye, Merge, Users, Loader2, HelpCircle, BookOpen, Play, X, ChevronRight, ChevronLeft, AlertTriangle, Trash2 } from 'lucide-react';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
+import { FileConflictDialog } from '@/components/file-conflict-dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -68,6 +69,7 @@ type DeduplicationResponse = {
 
 interface FileUploadProps {
   onFileProcessed: (data: DeduplicationResponse) => void;
+  onLoadSession?: (sessionId: string) => void;
 }
 
 // Define blocking strategies with descriptions
@@ -298,7 +300,7 @@ const TOUR_STEPS = [
   }
 ];
 
-export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
+export function FileUpload({ onFileProcessed, onLoadSession }: FileUploadProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -320,6 +322,11 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // File conflict detection state
+  const [showFileConflictDialog, setShowFileConflictDialog] = useState(false);
+  const [existingSession, setExistingSession] = useState<any>(null);
+  const [suggestedFilename, setSuggestedFilename] = useState<string>('');
   const [deduplicationResults, setDeduplicationResults] = useState<DeduplicationResponse | null>(null);
   
   // Blocking strategy configuration state
@@ -565,7 +572,6 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
   }, []);
 
   const handleFileSelection = useCallback(async (selectedFile: File | null) => {
-    setFile(selectedFile);
     if (selectedFile) {
       // Check file size limit (100MB)
       const maxSizeInBytes = 100 * 1024 * 1024; // 100MB in bytes
@@ -578,6 +584,35 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         return;
       }
       
+      // Check for file conflicts before proceeding
+      try {
+        const response = await fetch('/api/sessions/check-filename', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ fileName: selectedFile.name }),
+        });
+        
+        if (response.ok) {
+          const conflictData = await response.json();
+          
+          if (conflictData.exists) {
+            // Show conflict dialog
+            setExistingSession(conflictData.existingSession);
+            setSuggestedFilename(conflictData.suggestedFilename);
+            setShowFileConflictDialog(true);
+            setFile(selectedFile); // Store file for later use
+            return; // Don't proceed with normal file processing yet
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for file conflicts:', error);
+        // Continue with normal processing if conflict check fails
+      }
+      
+      // No conflict, proceed with normal file processing
+      setFile(selectedFile);
       await extractColumnHeaders(selectedFile);
       await getFileRowCount(selectedFile);
       toast({ title: "File Selected", description: selectedFile.name });
@@ -587,6 +622,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         fileInputRef.current.value = '';
       }
       
+      setFile(null);
       resetState();
       // When file is removed, call onFileProcessed with empty results to clear the table
       onFileProcessed({
@@ -682,8 +718,80 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     }
   }, []);
 
+  // Extract original file data for row-by-row comparison
+  const extractOriginalFileData = useCallback(async (file: File): Promise<any[] | null> => {
+    try {
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        // Handle CSV files
+        const text = await file.text();
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        
+        const data: Record<string, any>[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+            const row: Record<string, any> = { rowNumber: i };
+            headers.forEach((header, index) => {
+              row[header] = values[index] || '';
+            });
+            data.push(row);
+          }
+        }
+        return data;
+      } else {
+        // Handle Excel files
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (jsonData.length < 2) return null;
+        
+        const headers = jsonData[0] as string[];
+        const data: Record<string, any>[] = [];
+        
+        for (let i = 1; i < jsonData.length; i++) {
+          const values = jsonData[i] as any[];
+          if (values.some(v => v !== undefined && v !== null && v !== '')) {
+            const row: Record<string, any> = { rowNumber: i };
+            headers.forEach((header, index) => {
+              row[header] = values[index] || '';
+            });
+            data.push(row);
+          }
+        }
+        return data;
+      }
+    } catch (error) {
+      console.error('Error extracting original file data:', error);
+      return null;
+    }
+  }, []);
+
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
   const [estimatedProcessingTime, setEstimatedProcessingTime] = useState<{ minutes: number; seconds: number; totalTimeSeconds: number } | null>(null);
+
+  // File conflict dialog handlers
+  const handleLoadExistingSession = useCallback(async (sessionId: string) => {
+    if (onLoadSession) {
+      setShowFileConflictDialog(false);
+      await onLoadSession(sessionId);
+    }
+  }, [onLoadSession]);
+
+  const handleCreateNewSession = useCallback(async (newFileName: string) => {
+    if (file) {
+      setShowFileConflictDialog(false);
+      // Update the file name for processing with the new incremented name
+      const newFile = new File([file], newFileName, { type: file.type });
+      setFile(newFile);
+      await extractColumnHeaders(newFile);
+      await getFileRowCount(newFile);
+      toast({ title: "File Selected", description: newFile.name });
+    }
+  }, [file, extractColumnHeaders, getFileRowCount, toast]);
 
   const handleDeduplicate = useCallback(async () => {
     if (!file || isLoading) return;
@@ -704,18 +812,19 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     try {
       // Create database session first
       const sessionName = `${file.name} - ${new Date().toLocaleString()}`;
+      const processingConfig: Record<string, any> = {
+        use_prefix: usePrefix,
+        use_metaphone: useMetaphone,
+        use_soundex: useSoundex,
+        use_ngram: useNgram,
+        use_ai: useAi,
+        name_threshold: nameThreshold,
+        overall_threshold: overallThreshold
+      };
       const sessionId = await createSession(
         sessionName,
         file.name,
-        {
-          use_prefix: usePrefix,
-          use_metaphone: useMetaphone,
-          use_soundex: useSoundex,
-          use_ngram: useNgram,
-          use_ai: useAi,
-          name_threshold: nameThreshold,
-          overall_threshold: overallThreshold
-        }
+        processingConfig
       );
 
       if (!sessionId) {
@@ -723,6 +832,30 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       }
 
       setCurrentSessionId(sessionId);
+      
+      // Extract and store original file data for row-by-row comparison
+      try {
+        const originalFileData = await extractOriginalFileData(file);
+        if (originalFileData && originalFileData.length > 0) {
+          const response = await fetch('/api/sessions/original-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sessionId: sessionId,
+              fileData: originalFileData
+            })
+          });
+          
+          if (!response.ok) {
+            console.warn('Failed to store original file data:', await response.text());
+          }
+        }
+      } catch (error) {
+        console.error('Failed to store original file data:', error);
+        // Don't fail the whole process if we can't store original data
+      }
       
       // Calculate and set estimated processing time
       const estimatedTime = calculateEstimatedTime();
@@ -818,15 +951,7 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
             sessionId,
             validDuplicates,
             { name: file.name, size: file.size },
-            {
-              use_prefix: usePrefix,
-              use_metaphone: useMetaphone,
-              use_soundex: useSoundex,
-              use_ngram: useNgram,
-              use_ai: useAi,
-              name_threshold: nameThreshold,
-              overall_threshold: overallThreshold
-            },
+            processingConfig,
             columnMap
           );
         } else {
@@ -1493,6 +1618,18 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         </div>
       </div>
     )}
+    
+    {/* File Conflict Dialog */}
+    <FileConflictDialog
+      isOpen={showFileConflictDialog}
+      onClose={() => setShowFileConflictDialog(false)}
+      fileName={file?.name || ''}
+      existingSession={existingSession}
+      suggestedFilename={suggestedFilename}
+      onLoadExistingSession={handleLoadExistingSession}
+      onCreateNewSession={handleCreateNewSession}
+      isLoading={isLoading}
+    />
     </>
   );
 }

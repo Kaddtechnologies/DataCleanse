@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exportDuplicatePairsToExcel } from '@/utils/duplicate-pairs-export';
 import { checkPairForInvalidNames, getDisplayName } from '@/utils/record-validation';
+import { RowComparisonDialog } from '@/components/row-comparison-dialog';
 import {
   ColumnDef,
   flexRender,
@@ -192,6 +193,10 @@ export function InteractiveDataGrid({
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
   
+  // Row comparison dialog state
+  const [showRowComparison, setShowRowComparison] = useState(false);
+  const [comparisonRowNumbers, setComparisonRowNumbers] = useState<number[]>([]);
+  
   
   // Database persistence
   const { updateDuplicatePair } = useSessionPersistence();
@@ -212,7 +217,17 @@ export function InteractiveDataGrid({
     }
   };
   
-  
+  // Handle row number clicks for comparison
+  const handleRowNumberClick = (rowNumbers: (number | undefined)[]) => {
+    const validRowNumbers = rowNumbers.filter((num): num is number => 
+      num !== undefined && num !== null && !isNaN(num)
+    );
+    
+    if (validRowNumbers.length > 0 && sessionId) {
+      setComparisonRowNumbers(validRowNumbers);
+      setShowRowComparison(true);
+    }
+  };
 
   // Filter data based on status and confidence filters
   const filteredData = useMemo(() => {
@@ -275,7 +290,12 @@ export function InteractiveDataGrid({
               {!row.original.record1.city && row.original.record1.country}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <Badge variant="outline" className="text-xs bg-muted">
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-muted cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                onClick={() => handleRowNumberClick([row.original.record1.rowNumber, row.original.record2.rowNumber])}
+                title="Click to compare rows in Excel-like format"
+              >
                 Row: {row.original.record1.rowNumber || 'N/A'}
               </Badge>
             </div>
@@ -303,7 +323,12 @@ export function InteractiveDataGrid({
               {!row.original.record2.city && row.original.record2.country}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <Badge variant="outline" className="text-xs bg-muted">
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-muted cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                onClick={() => handleRowNumberClick([row.original.record1.rowNumber, row.original.record2.rowNumber])}
+                title="Click to compare rows in Excel-like format"
+              >
                 Row: {row.original.record2.rowNumber || 'N/A'}
               </Badge>
             </div>
@@ -621,7 +646,14 @@ export function InteractiveDataGrid({
         <DataTablePagination table={table} />
       </CardContent>
       
-      
+      {/* Row Comparison Dialog */}
+      <RowComparisonDialog
+        isOpen={showRowComparison}
+        onClose={() => setShowRowComparison(false)}
+        rowNumbers={comparisonRowNumbers}
+        sessionId={sessionId || ''}
+        title="Duplicate Pair Row Comparison"
+      />
     </Card>
   );
 }
