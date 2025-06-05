@@ -261,6 +261,10 @@ export function InteractiveDataGrid({
       num !== undefined && num !== null && !isNaN(num)
     );
     
+    console.log('Row numbers clicked:', rowNumbers);
+    console.log('Valid row numbers:', validRowNumbers);
+    console.log('Session ID:', sessionId);
+    
     if (validRowNumbers.length > 0 && sessionId) {
       setComparisonRowNumbers(validRowNumbers);
       setShowRowComparison(true);
@@ -363,7 +367,10 @@ export function InteractiveDataGrid({
                 </div>
                 <div className="flex items-center space-x-2 mt-1">
                   <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                  <div className="text-xs text-muted-foreground truncate">
+                  <div 
+                    className="text-xs text-muted-foreground truncate cursor-help"
+                    title={row.original.record1.address || 'No address available'}
+                  >
                     {row.original.record1.address}
                   </div>
                 </div>
@@ -407,7 +414,10 @@ export function InteractiveDataGrid({
                 </div>
                 <div className="flex items-center space-x-2 mt-1">
                   <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                  <div className="text-xs text-muted-foreground truncate">
+                  <div 
+                    className="text-xs text-muted-foreground truncate cursor-help"
+                    title={row.original.record2.address || 'No address available'}
+                  >
                     {row.original.record2.address}
                   </div>
                 </div>

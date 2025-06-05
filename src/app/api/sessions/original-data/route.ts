@@ -25,14 +25,51 @@ export async function GET(request: NextRequest) {
 
     // If specific row numbers are requested, filter the data
     if (rowNumbers && rowNumbers.length > 0) {
-      const filteredData = originalData.filter((_, index) => 
-        rowNumbers.includes(index + 1) // Row numbers are 1-based
+      console.log('Requested row numbers:', rowNumbers);
+      console.log('Original data length:', originalData.length);
+      console.log('First few rows of original data:', originalData.slice(0, 3));
+      
+      let filteredData: Array<Record<string, any>> = [];
+      
+      // Check if the original data has a 'rowNumber' or 'Row' field
+      const hasRowNumberField = originalData.length > 0 && (
+        'rowNumber' in originalData[0] || 
+        'Row' in originalData[0] || 
+        'row' in originalData[0] ||
+        'RowNumber' in originalData[0]
       );
       
+      if (hasRowNumberField) {
+        // Use the actual row number field from the data
+        filteredData = originalData.filter(row => {
+          const rowNum = row.rowNumber || row.Row || row.row || row.RowNumber;
+          return rowNumbers.includes(parseInt(rowNum));
+        });
+        console.log('Filtered by row number field, found:', filteredData.length, 'rows');
+      } else {
+        // Fallback to index-based filtering (1-based)
+        filteredData = originalData.filter((_, index) => 
+          rowNumbers.includes(index + 1)
+        );
+        console.log('Filtered by index + 1, found:', filteredData.length, 'rows');
+      }
+      
+             // Add the rowNumber field to each row for display purposes
+       const enrichedData = filteredData.map((row: Record<string, any>, index: number) => {
+         const requestedRowNum = rowNumbers[index];
+         return {
+           ...row,
+           rowNumber: row.rowNumber || row.Row || row.row || row.RowNumber || requestedRowNum
+         };
+       });
+      
+      console.log('Enriched data:', enrichedData);
+      
       return NextResponse.json({
-        data: filteredData,
+        data: enrichedData,
         rowNumbers: rowNumbers,
-        totalRows: originalData.length
+        totalRows: originalData.length,
+        filterMethod: hasRowNumberField ? 'field-based' : 'index-based'
       });
     }
 
@@ -61,12 +98,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await storeOriginalFileData(sessionId, fileData);
+    // Ensure each row has a rowNumber field for consistent referencing
+    const enrichedFileData = fileData.map((row: any, index: number) => ({
+      ...row,
+      rowNumber: row.rowNumber || row.Row || row.row || row.RowNumber || (index + 1)
+    }));
+
+    await storeOriginalFileData(sessionId, enrichedFileData);
 
     return NextResponse.json({
       success: true,
       message: 'Original file data stored successfully',
-      rowCount: fileData.length
+      rowCount: enrichedFileData.length
     });
 
   } catch (error) {
