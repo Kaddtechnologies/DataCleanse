@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2, Zap, Search } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2, Zap, Search, Filter, Building2, MapPin, Hash } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -35,17 +35,17 @@ const DataTablePagination = ({
   pageSizes = [10, 20, 30, 40, 50],
 }: DataTablePaginationProps) => {
   return (
-    <div className="flex items-center justify-between px-2 py-4">
+    <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-muted/20">
       <div className="flex items-center space-x-6 lg:space-x-8">
         <div className="flex items-center space-x-2">
-          <p className="text-sm font-medium">Rows per page</p>
+          <p className="text-sm font-medium text-muted-foreground">Rows per page</p>
           <Select
             value={`${table.getState().pagination.pageSize}`}
             onValueChange={(value) => {
               table.setPageSize(Number(value));
             }}
           >
-            <SelectTrigger className="h-8 w-[70px]">
+            <SelectTrigger className="h-8 w-[70px] border-border/50">
               <SelectValue placeholder={table.getState().pagination.pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
@@ -57,14 +57,14 @@ const DataTablePagination = ({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+        <div className="flex w-[100px] items-center justify-center text-sm font-medium text-muted-foreground">
           Page {table.getState().pagination.pageIndex + 1} of{" "}
           {table.getPageCount()}
         </div>
         <div className="flex items-center space-x-2">
           <Button
             variant="outline"
-            className="hidden h-8 w-8 p-0 lg:flex"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
           >
@@ -73,7 +73,7 @@ const DataTablePagination = ({
           </Button>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
@@ -82,7 +82,7 @@ const DataTablePagination = ({
           </Button>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
@@ -91,7 +91,7 @@ const DataTablePagination = ({
           </Button>
           <Button
             variant="outline"
-            className="hidden h-8 w-8 p-0 lg:flex"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
           >
@@ -111,69 +111,108 @@ interface InteractiveDataGridProps {
   selectedRowIds: Set<string>;
   onToggleRowSelection: (pairId: string) => void;
   onToggleSelectAll: () => void;
-  sessionId?: string; // Add session ID for database operations
+  sessionId?: string;
 }
 
+// Executive-level Status Badge
 const StatusBadge = ({ status }: { status: DuplicatePair['status'] }) => {
-  switch (status) {
-    case 'merged':
-      return <Badge variant="default" className="bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700"><CheckCircle className="w-3 h-3 mr-1" /> Merged</Badge>;
-    case 'duplicate':
-      return <Badge variant="default" className="bg-blue-500 dark:bg-blue-600 hover:bg-blue-600 dark:hover:bg-blue-700"><CheckCircle className="w-3 h-3 mr-1" /> Duplicate</Badge>;
-    case 'not_duplicate':
-      return <Badge variant="secondary"><XCircle className="w-3 h-3 mr-1" /> Not Duplicate</Badge>;
-    case 'skipped':
-      return <Badge variant="outline"><SkipForward className="w-3 h-3 mr-1" /> Skipped</Badge>;
-    case 'pending':
-    default:
-      return <Badge variant="outline" className="border-yellow-500 dark:border-yellow-400 text-yellow-600 dark:text-yellow-400"><AlertTriangle className="w-3 h-3 mr-1" /> Pending</Badge>;
-  }
+  const statusConfig = {
+    merged: {
+      variant: 'default' as const,
+      className: 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-800 font-medium',
+      icon: CheckCircle,
+      label: 'Merged'
+    },
+    duplicate: {
+      variant: 'default' as const,
+      className: 'bg-blue-500/10 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800 font-medium',
+      icon: CheckCircle,
+      label: 'Duplicate'
+    },
+    not_duplicate: {
+      variant: 'default' as const,
+      className: 'bg-slate-500/10 text-slate-700 border-slate-200 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-800 font-medium',
+      icon: XCircle,
+      label: 'Not Duplicate'
+    },
+    skipped: {
+      variant: 'default' as const,
+      className: 'bg-amber-500/10 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800 font-medium',
+      icon: SkipForward,
+      label: 'Skipped'
+    },
+    pending: {
+      variant: 'default' as const,
+      className: 'bg-orange-500/10 text-orange-700 border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-800 font-medium',
+      icon: AlertTriangle,
+      label: 'Pending'
+    }
+  };
+
+  const config = statusConfig[status] || statusConfig.pending;
+  const IconComponent = config.icon;
+
+  return (
+    <Badge variant={config.variant} className={`${config.className} px-3 py-1 text-xs`}>
+      <IconComponent className="w-3 h-3 mr-1.5" />
+      {config.label}
+    </Badge>
+  );
 };
 
-const AiConfidenceBadge = ({ confidence, isEnhanced = false }: { confidence?: string; isEnhanced?: boolean }) => {
-  if (!confidence) {
-    return <span className="text-xs text-muted-foreground">-</span>;
+// Executive-level AI Confidence Badge
+const AiConfidenceBadge = ({ confidence }: { confidence?: string }) => {
+  if (!confidence || confidence === 'Error') {
+    return (
+      <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-800 px-3 py-1 text-xs font-medium">
+        Error
+      </Badge>
+    );
   }
 
-  let badgeVariant: "default" | "secondary" | "outline" | "destructive" = "outline";
-  let className = "";
-  let iconColor = "";
+  const confidenceConfig = {
+    high: {
+      className: 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-800',
+      label: 'High'
+    },
+    medium: {
+      className: 'bg-amber-500/10 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800',
+      label: 'Medium'
+    },
+    low: {
+      className: 'bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-800',
+      label: 'Low'
+    }
+  };
 
-  switch (confidence.toLowerCase()) {
-    case 'high':
-      badgeVariant = "default";
-      className = "bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700";
-      iconColor = "text-white dark:text-white"; // White on green background
-      break;
-    case 'medium':
-      badgeVariant = "secondary";
-      className = "bg-yellow-500 dark:bg-yellow-600 hover:bg-yellow-600 dark:hover:bg-yellow-700 text-black dark:text-white";
-      iconColor = "text-black dark:text-white"; // Black on yellow for contrast
-      break;
-    case 'low':
-      badgeVariant = "destructive";
-      iconColor = "text-white dark:text-white"; // White on red background
-      break;
-    case 'error':
-      badgeVariant = "destructive";
-      className = "bg-red-700 dark:bg-red-800 hover:bg-red-800 dark:hover:bg-red-900";
-      iconColor = "text-white dark:text-white"; // White on red background
-      break;
-    default:
-      badgeVariant = "outline";
-      iconColor = "text-foreground dark:text-foreground"; // Follows text color
+  const config = confidenceConfig[confidence.toLowerCase() as keyof typeof confidenceConfig];
+  if (!config) return <span className="text-xs text-muted-foreground">-</span>;
+
+  return (
+    <Badge variant="outline" className={`${config.className} px-3 py-1 text-xs font-medium`}>
+      {config.label}
+    </Badge>
+  );
+};
+
+// Executive-level Similarity Score Badge
+const SimilarityBadge = ({ score }: { score: number }) => {
+  const percentage = Math.round(score * 100);
+  
+  let className = '';
+  if (percentage >= 95) {
+    className = 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-800';
+  } else if (percentage >= 85) {
+    className = 'bg-blue-500/10 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800';
+  } else if (percentage >= 70) {
+    className = 'bg-amber-500/10 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800';
+  } else {
+    className = 'bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-800';
   }
 
   return (
-    <Badge 
-      variant={badgeVariant} 
-      className={`${className} ${isEnhanced ? 'ring-2 ring-blue-400/50 dark:ring-blue-500/50' : ''}`}
-      title={isEnhanced ? "Confidence enhanced by smart business rules" : undefined}
-    >
-      {confidence}
-      {isEnhanced && (
-        <Zap className={`w-3 h-3 ml-1 ${iconColor}`} />
-      )}
+    <Badge variant="outline" className={`${className} px-3 py-1 text-xs font-medium tabular-nums`}>
+      {percentage}%
     </Badge>
   );
 };
@@ -198,7 +237,6 @@ export function InteractiveDataGrid({
   const [showRowComparison, setShowRowComparison] = useState(false);
   const [comparisonRowNumbers, setComparisonRowNumbers] = useState<number[]>([]);
   
-  
   // Database persistence
   const { updateDuplicatePair } = useSessionPersistence();
   
@@ -213,7 +251,6 @@ export function InteractiveDataGrid({
         await updateDuplicatePair(pairId, { status });
       } catch (error) {
         console.error('Failed to save status to database:', error);
-        // Could show a toast notification here for failed saves
       }
     }
   };
@@ -230,40 +267,30 @@ export function InteractiveDataGrid({
     }
   };
 
-  // Smart search function - searches only in specific searchable fields
+  // Smart search function
   const smartSearchFilter = (pair: DuplicatePair, query: string): boolean => {
     if (!query.trim()) return true;
     
-    // Normalize search query: lowercase, trim, and remove special characters for better matching
     const searchQuery = query.toLowerCase().trim().replace(/[^\w\s]/g, '');
     
-    // Define searchable fields for both records including state/region
     const searchableFields = [
-      // Record 1 fields
       pair.record1.name?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record1.address?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record1.city?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record1.country?.toLowerCase().replace(/[^\w\s]/g, '') || '',
-      pair.record1.state?.toLowerCase().replace(/[^\w\s]/g, '') || '',
-      pair.record1.region?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record1.tpi?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record1.rowNumber?.toString() || '',
       
-      // Record 2 fields  
       pair.record2.name?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record2.address?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record2.city?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record2.country?.toLowerCase().replace(/[^\w\s]/g, '') || '',
-      pair.record2.state?.toLowerCase().replace(/[^\w\s]/g, '') || '',
-      pair.record2.region?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record2.tpi?.toLowerCase().replace(/[^\w\s]/g, '') || '',
       pair.record2.rowNumber?.toString() || '',
     ];
     
-    // Support multiple search terms (space-separated)
     const searchTerms = searchQuery.split(/\s+/).filter(term => term.length > 0);
     
-    // Check if all search terms are found in at least one field
     return searchTerms.every(term =>
       searchableFields.some(field => field.includes(term))
     );
@@ -272,17 +299,14 @@ export function InteractiveDataGrid({
   // Filter data based on status, confidence, and smart search
   const filteredData = useMemo(() => {
     return data.filter(pair => {
-      // Apply status filter
       if (statusFilter !== "all" && pair.status !== statusFilter) {
         return false;
       }
       
-      // Apply confidence filter
       if (confidenceFilter !== "all" && pair.aiConfidence !== confidenceFilter) {
         return false;
       }
       
-      // Apply smart search filter
       if (!smartSearchFilter(pair, smartSearchQuery)) {
         return false;
       }
@@ -291,30 +315,35 @@ export function InteractiveDataGrid({
     });
   }, [data, statusFilter, confidenceFilter, smartSearchQuery]);
 
-  
-
   const columns: ColumnDef<DuplicatePair>[] = [
     {
       id: "select",
       header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(value) => {
-            table.toggleAllPageRowsSelected(!!value);
-            onToggleSelectAll();
-          }}
-          aria-label="Select all"
-        />
+        <div className="flex items-center">
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(value) => {
+              table.toggleAllPageRowsSelected(!!value);
+              onToggleSelectAll();
+            }}
+            aria-label="Select all"
+            className="border-border/50"
+          />
+        </div>
       ),
       cell: ({ row }) => (
-        <Checkbox
-          checked={selectedRowIds.has(row.original.id)}
-          onCheckedChange={() => onToggleRowSelection(row.original.id)}
-          aria-label="Select row"
-        />
+        <div className="flex items-center">
+          <Checkbox
+            checked={selectedRowIds.has(row.original.id)}
+            onCheckedChange={() => onToggleRowSelection(row.original.id)}
+            aria-label="Select row"
+            className="border-border/50"
+          />
+        </div>
       ),
       enableSorting: false,
       enableGlobalFilter: false,
+      size: 50,
     },
     {
       accessorKey: "record1",
@@ -322,65 +351,87 @@ export function InteractiveDataGrid({
       cell: ({ row }) => {
         const { record1Invalid } = checkPairForInvalidNames(row.original);
         return (
-          <div className={record1Invalid ? "border-l-3 border-red-400 pl-4" : "pl-1"}>
-            <div className={`font-medium ${record1Invalid ? 'text-red-600' : ''}`}>
-              {row.original.record1.name}
-              {record1Invalid && (
-                <span className="ml-2 text-xs text-red-500 font-normal">(invalid name)</span>
-              )}
+          <div className="space-y-2">
+            <div className="flex items-start space-x-3">
+              <Building2 className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className={`font-medium text-sm ${record1Invalid ? 'text-red-600' : 'text-foreground'} truncate`}>
+                  {row.original.record1.name}
+                  {record1Invalid && (
+                    <span className="ml-2 text-xs text-red-500 font-normal">(invalid)</span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 mt-1">
+                  <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                  <div className="text-xs text-muted-foreground truncate">
+                    {row.original.record1.address}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {[row.original.record1.city, row.original.record1.country].filter(Boolean).join(', ')}
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground mt-1">{row.original.record1.address}</div>
-            <div className="text-xs text-muted-foreground">
-              {row.original.record1.city && `${row.original.record1.city}, ${row.original.record1.country || ''}`}
-              {!row.original.record1.city && row.original.record1.country}
-            </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center space-x-2">
+              <Hash className="w-3 h-3 text-muted-foreground" />
               <Badge 
                 variant="outline" 
-                className="text-xs bg-muted cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="text-xs bg-muted/50 border-border/50 cursor-pointer hover:bg-accent transition-colors"
                 onClick={() => handleRowNumberClick([row.original.record1.rowNumber, row.original.record2.rowNumber])}
-                title="Click to compare rows in Excel-like format"
+                title="Click to compare rows"
               >
-                Row: {row.original.record1.rowNumber || 'N/A'}
+                Row {row.original.record1.rowNumber || 'N/A'}
               </Badge>
             </div>
           </div>
         );
       },
       enableSorting: true,
+      size: 300,
     },
     {
       accessorKey: "record2",
-      header: "Record 2",
+      header: "Record 2", 
       cell: ({ row }) => {
         const { record2Invalid } = checkPairForInvalidNames(row.original);
         return (
-          <div className={record2Invalid ? "border-l-3 border-red-400 pl-4" : "pl-1"}>
-            <div className={`font-medium ${record2Invalid ? 'text-red-600' : ''}`}>
-              {row.original.record2.name}
-              {record2Invalid && (
-                <span className="ml-2 text-xs text-red-500 font-normal">(invalid name)</span>
-              )}
+          <div className="space-y-2">
+            <div className="flex items-start space-x-3">
+              <Building2 className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className={`font-medium text-sm ${record2Invalid ? 'text-red-600' : 'text-foreground'} truncate`}>
+                  {row.original.record2.name}
+                  {record2Invalid && (
+                    <span className="ml-2 text-xs text-red-500 font-normal">(invalid)</span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 mt-1">
+                  <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                  <div className="text-xs text-muted-foreground truncate">
+                    {row.original.record2.address}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {[row.original.record2.city, row.original.record2.country].filter(Boolean).join(', ')}
+                </div>
+              </div>
             </div>
-            <div className="text-xs text-muted-foreground mt-1">{row.original.record2.address}</div>
-            <div className="text-xs text-muted-foreground">
-              {row.original.record2.city && `${row.original.record2.city}, ${row.original.record2.country || ''}`}
-              {!row.original.record2.city && row.original.record2.country}
-            </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center space-x-2">
+              <Hash className="w-3 h-3 text-muted-foreground" />
               <Badge 
                 variant="outline" 
-                className="text-xs bg-muted cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="text-xs bg-muted/50 border-border/50 cursor-pointer hover:bg-accent transition-colors"
                 onClick={() => handleRowNumberClick([row.original.record1.rowNumber, row.original.record2.rowNumber])}
-                title="Click to compare rows in Excel-like format"
+                title="Click to compare rows"
               >
-                Row: {row.original.record2.rowNumber || 'N/A'}
+                Row {row.original.record2.rowNumber || 'N/A'}
               </Badge>
             </div>
           </div>
         );
       },
       enableSorting: true,
+      size: 300,
     },
     {
       accessorKey: "similarityScore",
@@ -388,111 +439,79 @@ export function InteractiveDataGrid({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="hover:bg-muted/50 px-2"
         >
           Similarity
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
-      cell: ({ row }) => {
-        const originalScore = row.original.originalScore || (row.original.similarityScore * 100);
-        const enhancedScore = row.original.enhancedScore || originalScore;
-        const isEnhanced = row.original.enhancedScore && Math.abs(enhancedScore - originalScore) >= 1;
-        
-        return (
-          <div className="text-center">
-            <div className="flex flex-col items-center gap-1">
-              <Badge
-                variant={enhancedScore > 80 ? "default" : enhancedScore > 60 ? "secondary" : "destructive"}
-                className={
-                  enhancedScore > 80 ? "bg-green-500 dark:bg-green-600 hover:bg-green-600 dark:hover:bg-green-700" : 
-                  enhancedScore > 60 ? "bg-yellow-500 dark:bg-yellow-600 hover:bg-yellow-600 dark:hover:bg-yellow-700 text-black dark:text-white" : ""
-                }
-              >
-                {enhancedScore.toFixed(0)}%
-              </Badge>
-              {isEnhanced && (
-                <span className="text-xs text-muted-foreground" title={`Original: ${originalScore.toFixed(0)}% → Enhanced: ${enhancedScore.toFixed(0)}%`}>
-                  {enhancedScore > originalScore ? '↑ Enhanced' : '↓ Adjusted'}
-                </span>
-              )}
-            </div>
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <SimilarityBadge score={row.original.similarityScore} />
+        </div>
+      ),
+      size: 120,
     },
     {
       accessorKey: "aiConfidence",
       header: "AI Confidence",
-      cell: ({ row }) => {
-        // Prioritize enhanced confidence over original AI confidence
-        const confidence = row.original.enhancedConfidence || row.original.aiConfidence;
-        const isEnhanced = !!row.original.enhancedConfidence;
-        
-        return (
-          <div className="text-center">
-            <AiConfidenceBadge confidence={confidence} isEnhanced={isEnhanced} />
-          </div>
-        );
-      },
+      cell: ({ row }) => (
+        <div className="flex justify-center">
+          <AiConfidenceBadge confidence={row.original.enhancedConfidence || row.original.aiConfidence} />
+        </div>
+      ),
+      size: 140,
     },
     {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => (
-        <div className="text-center">
+        <div className="flex justify-center">
           <StatusBadge status={row.original.status} />
         </div>
       ),
+      size: 120,
     },
     {
       id: "actions",
+      header: "Actions",
       cell: ({ row }) => (
-        <div className="text-right">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onReviewPair(row.original)}
-            >
-              <Eye className="w-4 h-4 mr-1 md:mr-2" />
-              <span className="hidden md:inline">Review</span>
-            </Button>
-            
-            {/* Quick action buttons for faster processing */}
-            {row.original.status === 'pending' && (
-              <div className="hidden md:flex items-center gap-1 ml-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleStatusUpdate(row.original.id, 'duplicate')}
-                  className="text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 hover:text-green-700 dark:hover:text-green-300 h-8 w-8 p-0"
-                  title="Mark as Duplicate"
-                >
-                  <CheckCircle className="w-3 h-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleStatusUpdate(row.original.id, 'not_duplicate')}
-                  className="text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 h-8 w-8 p-0"
-                  title="Not a Duplicate"
-                >
-                  <XCircle className="w-3 h-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleStatusUpdate(row.original.id, 'skipped')}
-                  className="text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/30 hover:text-gray-700 dark:hover:text-gray-300 h-8 w-8 p-0"
-                  title="Skip"
-                >
-                  <SkipForward className="w-3 h-3" />
-                </Button>
-              </div>
-            )}
-          </div>
+        <div className="flex items-center justify-end space-x-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onReviewPair(row.original)}
+            className="border-border/50 hover:bg-accent text-xs px-3 py-1.5"
+          >
+            <Eye className="w-3 h-3 mr-1.5" />
+            Review
+          </Button>
+          
+          {row.original.status === 'pending' && (
+            <div className="flex items-center space-x-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleStatusUpdate(row.original.id, 'duplicate')}
+                className="text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 hover:text-emerald-700 h-7 w-7 p-0"
+                title="Mark as Duplicate"
+              >
+                <CheckCircle className="w-3 h-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleStatusUpdate(row.original.id, 'not_duplicate')}
+                className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-700 h-7 w-7 p-0"
+                title="Not a Duplicate"
+              >
+                <XCircle className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
         </div>
       ),
+      size: 160,
     },
   ];
 
@@ -513,39 +532,13 @@ export function InteractiveDataGrid({
     },
   });
 
-  // Function to export data to Excel with specified formatting
-  const handleExportToExcel = async () => {
-    if (!data || data.length === 0 || isExporting) return;
-    
-    setIsExporting(true);
-    
-    try {
-      // Get the filtered rows from the table instead of using raw data
-      // This ensures export matches what's currently displayed
-      const filteredRows = table.getFilteredRowModel().rows;
-      const filteredDataForExport = filteredRows.map(row => row.original);
-      
-      // Use the dedicated export utility
-      await exportDuplicatePairsToExcel(data, filteredDataForExport, {
-        globalFilter: smartSearchQuery, // Use smart search query instead
-        statusFilter,
-        confidenceFilter
-      });
-      
-      setIsExporting(false);
-    } catch (error) {
-      console.error("Error exporting data:", error);
-      setIsExporting(false);
-    }
-  };
-
   if (!data) {
     return (
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold">Potential Duplicates</CardTitle>
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader className="border-b border-border/50 bg-muted/20">
+          <CardTitle className="text-xl font-semibold text-foreground">Potential Duplicates Review</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <p className="text-muted-foreground">Loading data or no data available.</p>
         </CardContent>
       </Card>
@@ -554,11 +547,11 @@ export function InteractiveDataGrid({
 
   if (data.length === 0) {
     return (
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold">Potential Duplicates</CardTitle>
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader className="border-b border-border/50 bg-muted/20">
+          <CardTitle className="text-xl font-semibold text-foreground">Potential Duplicates Review</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <p className="text-muted-foreground">No duplicate pairs found or data not yet processed.</p>
         </CardContent>
       </Card>
@@ -566,55 +559,48 @@ export function InteractiveDataGrid({
   }
 
   return (
-    <Card className="shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-2xl font-semibold">Potential Duplicates Review</CardTitle>
+    <Card className="border-border/50 shadow-sm">
+      <CardHeader className="border-b border-border/50 bg-muted/20">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-xl font-semibold text-foreground mb-2">Potential Duplicates Review</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Showing {filteredData.length} of {data.length} potential duplicate pairs
+              {smartSearchQuery && ` (Search: "${smartSearchQuery}")`}
+            </p>
+          </div>
+        </div>
         
-        
-        
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredData.length} of {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
-            {smartSearchQuery && ` (Search: "${smartSearchQuery}")`}
-            {statusFilter !== "all" && ` (Status: ${statusFilter})`}
-            {confidenceFilter !== "all" && ` (Confidence: ${confidenceFilter})`}
-          </p>
-          
-          <div className="flex flex-col sm:flex-row items-end sm:items-center gap-3">
-            {/* Smart Search Input */}
-            <div className="relative w-full sm:w-80">
-              <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
-                <Search className="w-4 h-4 text-muted-foreground" />
-              </div>
-              <Input
-                placeholder="Search by name, address, city, state, country, TPI, or row number..."
-                value={smartSearchQuery}
-                onChange={(event) => setSmartSearchQuery(event.target.value)}
-                className="pl-10 bg-background border-muted-foreground/20 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200"
-              />
-              {smartSearchQuery && (
-                <button
-                  onClick={() => setSmartSearchQuery('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                  title="Clear search"
-                >
-                  ×
-                </button>
-              )}
+        {/* Executive Controls Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mt-6">
+          {/* Advanced Search */}
+          <div className="relative flex-1 max-w-md">
+            <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+              <Search className="w-4 h-4 text-muted-foreground" />
             </div>
+            <Input
+              placeholder="Search records..."
+              value={smartSearchQuery}
+              onChange={(event) => setSmartSearchQuery(event.target.value)}
+              className="pl-10 border-border/50 bg-background/50 focus:bg-background transition-colors"
+            />
             {smartSearchQuery && (
-              <div className="text-xs text-muted-foreground mt-1 w-full sm:w-80">
-                💡 Tip: Use spaces to search multiple terms (e.g., "john london" finds records with both words)
-              </div>
-            )}
-            
-            {/* Filter Controls */}
-            <div className="flex items-center gap-2">
-              <Select
-                value={statusFilter}
-                onValueChange={setStatusFilter}
+              <button
+                onClick={() => setSmartSearchQuery('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                title="Clear search"
               >
-                <SelectTrigger className="h-8 w-[130px]">
+                ×
+              </button>
+            )}
+          </div>
+          
+          {/* Executive Filters */}
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-muted-foreground" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-[140px] border-border/50 bg-background/50">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -627,11 +613,8 @@ export function InteractiveDataGrid({
                 </SelectContent>
               </Select>
               
-              <Select
-                value={confidenceFilter}
-                onValueChange={setConfidenceFilter}
-              >
-                <SelectTrigger className="h-8 w-[150px]">
+              <Select value={confidenceFilter} onValueChange={setConfidenceFilter}>
+                <SelectTrigger className="h-9 w-[140px] border-border/50 bg-background/50">
                   <SelectValue placeholder="Confidence" />
                 </SelectTrigger>
                 <SelectContent>
@@ -644,22 +627,20 @@ export function InteractiveDataGrid({
             </div>
           </div>
         </div>
-        
-        {/* Review Instructions */}
-        <div className="flex justify-end items-center py-2 border-b border-border">
-          <p className="text-xs text-muted-foreground">
-            Click <strong>Review</strong> to examine duplicate pairs in detail and make decisions about merging or keeping records separate.
-          </p>
-        </div>
       </CardHeader>
-      <CardContent>
-        <div className="rounded-md border">
+      
+      <CardContent className="p-0">
+        <div className="overflow-hidden">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
+                <TableRow key={headerGroup.id} className="border-border/50 hover:bg-transparent">
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
+                    <TableHead 
+                      key={header.id} 
+                      className="text-muted-foreground font-semibold text-xs uppercase tracking-wide py-4 px-6"
+                      style={{ width: header.getSize() }}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -673,16 +654,22 @@ export function InteractiveDataGrid({
             </TableHeader>
             <TableBody>
               {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => {
+                table.getRowModel().rows.map((row, index) => {
                   const { hasInvalidName } = checkPairForInvalidNames(row.original);
                   return (
                     <TableRow
                       key={row.id}
                       data-state={row.getIsSelected() && "selected"}
-                      className={hasInvalidName ? "hover:bg-red-25" : ""}
+                      className={`border-border/50 hover:bg-muted/30 transition-colors ${
+                        hasInvalidName ? "bg-red-50/50 dark:bg-red-950/10" : ""
+                      } ${index % 2 === 0 ? "bg-background" : "bg-muted/10"}`}
                     >
                       {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id} className="py-4">
+                        <TableCell 
+                          key={cell.id} 
+                          className="py-4 px-6 align-top"
+                          style={{ width: cell.column.getSize() }}
+                        >
                           {flexRender(
                             cell.column.columnDef.cell,
                             cell.getContext()
@@ -696,9 +683,9 @@ export function InteractiveDataGrid({
                 <TableRow>
                   <TableCell
                     colSpan={columns.length}
-                    className="h-24 text-center"
+                    className="h-24 text-center text-muted-foreground"
                   >
-                    No results.
+                    No results found.
                   </TableCell>
                 </TableRow>
               )}
