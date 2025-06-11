@@ -17,6 +17,13 @@ This is a Next.js 15.2.3 application for MDM (Master Data Management) data dedup
 - `npm run lint` - Run ESLint
 - `npm run typecheck` - Run TypeScript type checking
 
+### Database Management
+- `npm run db:setup` - Set up complete database from scratch (PostgreSQL + pgvector)
+- `npm run db:start` - Start existing database containers
+- `npm run db:stop` - Stop database containers
+- `npm run db:reset` - Reset database and start fresh
+- `./setup-database.sh` - Direct database setup script
+
 ### Custom Development Script
 The project uses a custom dev script (`src/scripts/dev.js`) that automatically opens the browser to the correct port.
 
@@ -68,9 +75,29 @@ The project uses a custom dev script (`src/scripts/dev.js`) that automatically o
 - `DATABASE_URL` - PostgreSQL connection string for session persistence
 
 ### Database Setup
-- PostgreSQL database with tables for sessions, duplicate_pairs, and original_file_data
+- PostgreSQL 16 with pgvector extension for semantic similarity
+- Tables: sessions, duplicate_pairs, original_file_data
 - Initialization scripts in `scripts/init-db.sql`
 - Docker Compose configuration available (`docker-compose.yml`)
+
+### Database Connection Information
+- **Host**: localhost
+- **Port**: 5432
+- **Database**: mdm_dedup
+- **Username**: mdm_user
+- **Password**: mdm_password123
+
+### Useful Database Commands
+```bash
+# Connect to database
+docker exec -it mdm-postgres psql -U mdm_user -d mdm_dedup
+
+# View logs
+docker logs mdm-postgres
+
+# Database health check
+curl http://localhost:3000/api/health
+```
 
 ### Azure OpenAI Settings (in environment.ts)
 - Endpoint: `https://devoai.openai.azure.com`
@@ -120,3 +147,16 @@ Records flow through multiple similarity scoring phases (name, address, city, co
 - **Component**: `SessionLoadingDialog` provides full session management interface
 - **Alternative**: `SessionManager` component exists but is not currently accessible in UI
 - **File Conflicts**: Automatic detection and resolution during file upload
+
+### Session Recovery Guide
+To continue previous work:
+1. Click "Sessions" button in header (appears when sessions exist)
+2. Select a previous session from the list
+3. All duplicate pairs and decisions will be restored
+4. Continue where you left off with full progress tracking
+
+### Session API Endpoints
+- `POST /api/sessions/create` - Create new session
+- `GET /api/sessions/list` - List user sessions
+- `GET /api/sessions/[sessionId]/load` - Load session data
+- `PUT /api/duplicate-pairs/[pairId]/update` - Update pair status
