@@ -613,6 +613,7 @@ export function CardReviewModal({
         rowNumbers={comparisonRowNumbers}
         sessionId={sessionId || ''}
         title="Record Row Comparison"
+        fallbackRecords={[pair.record1, pair.record2]}
       />
     </Dialog>
   );

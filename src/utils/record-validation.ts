@@ -281,9 +281,185 @@ export function isCompletelyInvalidRecord(record: CustomerRecord): boolean {
 }
 
 /**
- * Categorize invalid record pairs into meaningful groups
+ * Multi-stage record categorization system for comprehensive validation
+ * Stage 1: Initial validation categorizes records with null/undefined/empty/NaN values
+ * Stage 2: Duplicate address detection processes no-name records
+ * Stage 3: Final categorization for UI presentation
+ */
+
+/**
+ * Stage 1: Initial validation categorization
  * @param pairs Array of DuplicatePair
- * @returns Categorized pairs
+ * @returns Initial categorization results
+ */
+export function performStage1Validation(pairs: DuplicatePair[]): {
+  validRecords: DuplicatePair[];        // Valid records with existing names that bypass validation
+  noNameRecords: DuplicatePair[];       // Records with valid non-empty addresses but invalid names
+  invalidRecords: DuplicatePair[];      // Records with both missing names and missing/invalid addresses
+} {
+  const validRecords: DuplicatePair[] = [];
+  const noNameRecords: DuplicatePair[] = [];
+  const invalidRecords: DuplicatePair[] = [];
+  
+  pairs.forEach(pair => {
+    const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+    const record1HasValidAddress = hasValidAddressInfo(pair.record1);
+    const record2HasValidAddress = hasValidAddressInfo(pair.record2);
+    
+    // Check if both records are valid (have names)
+    if (!record1Invalid && !record2Invalid) {
+      validRecords.push(pair);
+    }
+    // Check if records have invalid names but valid addresses
+    else if ((record1Invalid || record2Invalid) && (record1HasValidAddress || record2HasValidAddress)) {
+      // Only include pairs where at least one record has a valid address
+      if ((record1Invalid && record1HasValidAddress) || (record2Invalid && record2HasValidAddress) ||
+          (!record1Invalid && record1HasValidAddress) || (!record2Invalid && record2HasValidAddress)) {
+        noNameRecords.push(pair);
+      } else {
+        invalidRecords.push(pair);
+      }
+    }
+    // Records with both missing names and missing/invalid addresses
+    else {
+      invalidRecords.push(pair);
+    }
+  });
+  
+  return {
+    validRecords,
+    noNameRecords,
+    invalidRecords
+  };
+}
+
+/**
+ * Stage 2: Duplicate address detection for no-name records
+ * @param noNamePairs Array of pairs with invalid names but valid addresses
+ * @returns Categorized results based on address matching
+ */
+export function performStage2AddressDetection(noNamePairs: DuplicatePair[]): {
+  invalidDuplicates: DuplicatePair[];   // Records sharing identical addresses
+  remainingInvalid: DuplicatePair[];    // Records with unique addresses moved to invalid list
+} {
+  const invalidDuplicates: DuplicatePair[] = [];
+  const remainingInvalid: DuplicatePair[] = [];
+  
+  // Group records by normalized address key
+  const addressGroups = new Map<string, DuplicatePair[]>();
+  
+  noNamePairs.forEach(pair => {
+    // Create address keys for both records
+    const createAddressKey = (record: CustomerRecord): string => {
+      if (!hasValidAddressInfo(record)) return '';
+      
+      const address = (record.address || '').toLowerCase().replace(/[^\w\s]/g, '').trim();
+      const city = (record.city || '').toLowerCase().trim();
+      const country = (record.country || record.state || '').toLowerCase().trim();
+      
+      return `${address}|${city}|${country}`;
+    };
+    
+    const key1 = createAddressKey(pair.record1);
+    const key2 = createAddressKey(pair.record2);
+    
+    // Use the key from the record with valid address info
+    const addressKey = key1 || key2;
+    
+    if (addressKey) {
+      if (!addressGroups.has(addressKey)) {
+        addressGroups.set(addressKey, []);
+      }
+      addressGroups.get(addressKey)!.push(pair);
+    } else {
+      // No valid address found, move to remaining invalid
+      remainingInvalid.push(pair);
+    }
+  });
+  
+  // Process address groups
+  addressGroups.forEach(pairs => {
+    if (pairs.length > 1) {
+      // Multiple pairs share the same address - these are invalid duplicates
+      pairs.forEach(pair => invalidDuplicates.push(pair));
+    } else {
+      // Unique address - move to remaining invalid
+      pairs.forEach(pair => remainingInvalid.push(pair));
+    }
+  });
+  
+  return {
+    invalidDuplicates,
+    remainingInvalid
+  };
+}
+
+/**
+ * Stage 3: Final categorization for modal presentation
+ * @param stage1Results Results from Stage 1 validation
+ * @param stage2Results Results from Stage 2 address detection
+ * @returns Final categorized results for UI display
+ */
+export function performStage3Categorization(
+  stage1Results: ReturnType<typeof performStage1Validation>,
+  stage2Results: ReturnType<typeof performStage2AddressDetection>
+): {
+  validPairs: DuplicatePair[];
+  invalidDuplicatePairs: DuplicatePair[];     // Panel 1: Invalid duplicates with matching addresses
+  completelyInvalidPairs: DuplicatePair[];    // Panel 2: Invalid records for bulk deletion
+  statistics: {
+    totalValid: number;
+    totalInvalidDuplicates: number;
+    totalCompletelyInvalid: number;
+    totalRecordsAffected: number;
+  };
+} {
+  const validPairs = stage1Results.validRecords;
+  const invalidDuplicatePairs = stage2Results.invalidDuplicates;
+  const completelyInvalidPairs = [
+    ...stage1Results.invalidRecords,
+    ...stage2Results.remainingInvalid
+  ];
+  
+  // Calculate affected records count
+  const totalRecordsAffected = [...invalidDuplicatePairs, ...completelyInvalidPairs].reduce((count, pair) => {
+    const record1Invalid = isInvalidNameRecord(pair.record1) || isCompletelyInvalidRecord(pair.record1);
+    const record2Invalid = isInvalidNameRecord(pair.record2) || isCompletelyInvalidRecord(pair.record2);
+    return count + (record1Invalid ? 1 : 0) + (record2Invalid ? 1 : 0);
+  }, 0);
+  
+  return {
+    validPairs,
+    invalidDuplicatePairs,
+    completelyInvalidPairs,
+    statistics: {
+      totalValid: validPairs.length,
+      totalInvalidDuplicates: invalidDuplicatePairs.length,
+      totalCompletelyInvalid: completelyInvalidPairs.length,
+      totalRecordsAffected
+    }
+  };
+}
+
+/**
+ * Complete multi-stage validation flow
+ * @param pairs Array of DuplicatePair from API response
+ * @returns Comprehensive validation results
+ */
+export function performComprehensiveValidation(pairs: DuplicatePair[]): ReturnType<typeof performStage3Categorization> {
+  // Stage 1: Initial validation
+  const stage1Results = performStage1Validation(pairs);
+  
+  // Stage 2: Duplicate address detection
+  const stage2Results = performStage2AddressDetection(stage1Results.noNameRecords);
+  
+  // Stage 3: Final categorization
+  return performStage3Categorization(stage1Results, stage2Results);
+}
+
+/**
+ * Legacy function maintained for backward compatibility
+ * @deprecated Use performComprehensiveValidation instead
  */
 export function categorizeInvalidPairs(pairs: DuplicatePair[]): {
   validPairs: DuplicatePair[];
@@ -296,44 +472,17 @@ export function categorizeInvalidPairs(pairs: DuplicatePair[]): {
     totalRecordsAffected: number;
   };
 } {
-  const validPairs: DuplicatePair[] = [];
-  const invalidNameValidAddressPairs: DuplicatePair[] = [];
-  const completelyInvalidPairs: DuplicatePair[] = [];
-  
-  pairs.forEach(pair => {
-    const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
-    const record1CompletelyInvalid = isCompletelyInvalidRecord(pair.record1);
-    const record2CompletelyInvalid = isCompletelyInvalidRecord(pair.record2);
-    
-    if (!record1Invalid && !record2Invalid) {
-      // Both records have valid names
-      validPairs.push(pair);
-    } else if (record1CompletelyInvalid || record2CompletelyInvalid) {
-      // At least one record is completely invalid (both name and address invalid)
-      completelyInvalidPairs.push(pair);
-    } else if ((record1Invalid || record2Invalid) && hasMatchingAddress(pair.record1, pair.record2)) {
-      // One or both records have invalid names but valid matching addresses - needs user decision
-      invalidNameValidAddressPairs.push(pair);
-    } else {
-      // One record has invalid name but addresses don't match or are invalid
-      completelyInvalidPairs.push(pair);
-    }
-  });
-  
-  const totalRecordsAffected = completelyInvalidPairs.reduce((count, pair) => {
-    const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
-    return count + (record1Invalid ? 1 : 0) + (record2Invalid ? 1 : 0);
-  }, 0);
+  const results = performComprehensiveValidation(pairs);
   
   return {
-    validPairs,
-    invalidNameValidAddressPairs,
-    completelyInvalidPairs,
+    validPairs: results.validPairs,
+    invalidNameValidAddressPairs: results.invalidDuplicatePairs,
+    completelyInvalidPairs: results.completelyInvalidPairs,
     statistics: {
-      totalValid: validPairs.length,
-      totalInvalidNameValidAddress: invalidNameValidAddressPairs.length,
-      totalCompletelyInvalid: completelyInvalidPairs.length,
-      totalRecordsAffected
+      totalValid: results.statistics.totalValid,
+      totalInvalidNameValidAddress: results.statistics.totalInvalidDuplicates,
+      totalCompletelyInvalid: results.statistics.totalCompletelyInvalid,
+      totalRecordsAffected: results.statistics.totalRecordsAffected
     }
   };
 } 

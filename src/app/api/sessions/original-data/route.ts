@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { sessionId, fileData } = await request.json();
+    const { sessionId, fileData, headers } = await request.json();
 
     if (!sessionId || !fileData) {
       return NextResponse.json(
@@ -104,12 +104,16 @@ export async function POST(request: NextRequest) {
       rowNumber: row.rowNumber || row.Row || row.row || row.RowNumber || (index + 1)
     }));
 
-    await storeOriginalFileData(sessionId, enrichedFileData);
+    // Extract headers from the first row if not provided
+    const columnHeaders = headers || (enrichedFileData.length > 0 ? Object.keys(enrichedFileData[0]).filter(key => key !== 'rowNumber') : []);
+
+    await storeOriginalFileData(sessionId, enrichedFileData, columnHeaders);
 
     return NextResponse.json({
       success: true,
       message: 'Original file data stored successfully',
-      rowCount: enrichedFileData.length
+      rowCount: enrichedFileData.length,
+      headerCount: columnHeaders.length
     });
 
   } catch (error) {

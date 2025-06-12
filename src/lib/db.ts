@@ -494,6 +494,7 @@ export async function deleteSession(sessionId: string): Promise<void> {
     // Delete in proper order to respect foreign key constraints
     await client.query('DELETE FROM session_config WHERE session_id = $1', [sessionId]);
     await client.query('DELETE FROM duplicate_pairs WHERE session_id = $1', [sessionId]);
+    await client.query('DELETE FROM original_file_data WHERE session_id = $1', [sessionId]);
     await client.query('DELETE FROM file_uploads WHERE session_id = $1', [sessionId]);
     await client.query('DELETE FROM user_sessions WHERE id = $1', [sessionId]);
     
@@ -541,32 +542,181 @@ export async function getNextAvailableFilename(baseFileName: string): Promise<st
   }
 }
 
-// Store original file data for row-by-row comparison
+// Store original file data for row-by-row comparison in dedicated table
 export async function storeOriginalFileData(
   sessionId: string,
-  fileData: Array<Record<string, any>>
+  fileData: Array<Record<string, any>>,
+  headers?: string[]
 ): Promise<void> {
   const client = await pool.connect();
   try {
-    // Store as a single JSON document in session metadata
-    const query = `
-      UPDATE user_sessions 
-      SET metadata = metadata || jsonb_build_object('originalFileData', $1::jsonb)
-      WHERE id = $2
-    `;
-    await client.query(query, [JSON.stringify(fileData), sessionId]);
+    await client.query('BEGIN');
+    
+    // Clear any existing data for this session
+    await client.query('DELETE FROM original_file_data WHERE session_id = $1', [sessionId]);
+    
+    // Store each row with its row number (1-based to match Excel)
+    for (let i = 0; i < fileData.length; i++) {
+      const rowNumber = i + 1;
+      const query = `
+        INSERT INTO original_file_data (session_id, row_number, row_data, column_headers)
+        VALUES ($1, $2, $3, $4)
+      `;
+      await client.query(query, [
+        sessionId,
+        rowNumber,
+        JSON.stringify(fileData[i]),
+        headers ? JSON.stringify(headers) : null
+      ]);
+    }
+    
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }
 }
 
-// Get original file data for row comparison
+// Get original file data for specific row numbers
+export async function getOriginalFileDataByRows(
+  sessionId: string,
+  rowNumbers: number[]
+): Promise<Array<{ rowNumber: number; data: Record<string, any>; headers?: string[] }> | null> {
+  const client = await pool.connect();
+  try {
+    const query = `
+      SELECT row_number, row_data, column_headers 
+      FROM original_file_data 
+      WHERE session_id = $1 AND row_number = ANY($2)
+      ORDER BY row_number
+    `;
+    const result = await client.query(query, [sessionId, rowNumbers]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows.map(row => ({
+      rowNumber: row.row_number,
+      data: row.row_data,
+      headers: row.column_headers
+    }));
+  } finally {
+    client.release();
+  }
+}
+
+// Get original file data for row comparison (legacy function for backwards compatibility)
 export async function getOriginalFileData(sessionId: string): Promise<Array<Record<string, any>> | null> {
   const client = await pool.connect();
   try {
-    const query = "SELECT metadata->'originalFileData' as file_data FROM user_sessions WHERE id = $1";
+    const query = `
+      SELECT row_data 
+      FROM original_file_data 
+      WHERE session_id = $1 
+      ORDER BY row_number
+    `;
     const result = await client.query(query, [sessionId]);
-    return result.rows[0]?.file_data || null;
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    return result.rows.map(row => row.row_data);
+  } finally {
+    client.release();
+  }
+}
+
+// Get column headers for a session
+export async function getOriginalFileHeaders(sessionId: string): Promise<string[] | null> {
+  const client = await pool.connect();
+  try {
+    const query = `
+      SELECT column_headers 
+      FROM original_file_data 
+      WHERE session_id = $1 AND column_headers IS NOT NULL
+      LIMIT 1
+    `;
+    const result = await client.query(query, [sessionId]);
+    return result.rows[0]?.column_headers || null;
+  } finally {
+    client.release();
+  }
+}
+
+// Delete multiple duplicate pairs by IDs
+export async function deleteDuplicatePairs(pairIds: string[]): Promise<{ deletedCount: number }> {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Delete the pairs
+    const placeholders = pairIds.map((_, index) => `$${index + 1}`).join(',');
+    const deleteQuery = `
+      DELETE FROM duplicate_pairs 
+      WHERE id IN (${placeholders})
+    `;
+    
+    const deleteResult = await client.query(deleteQuery, pairIds);
+    
+    // Update session statistics for affected sessions
+    if (deleteResult.rowCount && deleteResult.rowCount > 0) {
+      const updateStatsQuery = `
+        UPDATE sessions 
+        SET statistics = json_build_object(
+          'total_pairs', COALESCE((
+            SELECT COUNT(*) 
+            FROM duplicate_pairs 
+            WHERE session_id = sessions.id
+          ), 0),
+          'pending', COALESCE((
+            SELECT COUNT(*) 
+            FROM duplicate_pairs 
+            WHERE session_id = sessions.id AND status = 'pending'
+          ), 0),
+          'merged', COALESCE((
+            SELECT COUNT(*) 
+            FROM duplicate_pairs 
+            WHERE session_id = sessions.id AND status = 'merged'
+          ), 0),
+          'duplicate', COALESCE((
+            SELECT COUNT(*) 
+            FROM duplicate_pairs 
+            WHERE session_id = sessions.id AND status = 'duplicate'
+          ), 0),
+          'not_duplicate', COALESCE((
+            SELECT COUNT(*) 
+            FROM duplicate_pairs 
+            WHERE session_id = sessions.id AND status = 'not_duplicate'
+          ), 0),
+          'skipped', COALESCE((
+            SELECT COUNT(*) 
+            FROM duplicate_pairs 
+            WHERE session_id = sessions.id AND status = 'skipped'
+          ), 0)
+        ),
+        updated_at = CURRENT_TIMESTAMP
+        WHERE id IN (
+          SELECT DISTINCT session_id 
+          FROM duplicate_pairs 
+          WHERE id = ANY($1::text[])
+        )
+      `;
+
+      await client.query(updateStatsQuery, [pairIds]);
+    }
+    
+    await client.query('COMMIT');
+    
+    return { deletedCount: deleteResult.rowCount || 0 };
+    
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
   } finally {
     client.release();
   }

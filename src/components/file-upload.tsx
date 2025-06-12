@@ -6,6 +6,7 @@ import { ArrowRight } from 'lucide-react';
 import { LoadingOverlay } from '@/components/loading-overlay';
 import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { FileConflictDialog } from '@/components/file-conflict-dialog';
+import { DeleteInvalidRecordsModal } from '@/components/delete-invalid-records-modal';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +18,7 @@ import {
   logMappingResults, 
   validateRequiredMappings
 } from '@/lib/canonical-field-mapping';
+import { performComprehensiveValidation } from '@/utils/record-validation';
 import type { DuplicatePair } from '@/types';
 import {
   FileUploadDisplay,
@@ -112,6 +114,11 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
   const [existingSession, setExistingSession] = useState<any>(null);
   const [suggestedFilename, setSuggestedFilename] = useState<string>('');
   const [deduplicationResults, setDeduplicationResults] = useState<DeduplicationResponse | null>(null);
+  
+  // Data validation modal state
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationPairs, setValidationPairs] = useState<DuplicatePair[]>([]);
+  const [isDeletingInvalidRecords, setIsDeletingInvalidRecords] = useState(false);
   
   // Blocking strategy configuration state
   const [blockingConfig, setBlockingConfig] = useState<BlockingStrategyConfigType>({
@@ -401,7 +408,7 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
   }, []);
 
   // Extract original file data for row-by-row comparison
-  const extractOriginalFileData = useCallback(async (file: File): Promise<any[] | null> => {
+  const extractOriginalFileData = useCallback(async (file: File): Promise<{ data: any[]; headers: string[] } | null> => {
     try {
       if (file.name.toLowerCase().endsWith('.csv')) {
         // Handle CSV files
@@ -420,7 +427,7 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
             data.push(row);
           }
         }
-        return data;
+        return { data, headers };
       } else {
         // Handle Excel files
         const buffer = await file.arrayBuffer();
@@ -444,7 +451,7 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
             data.push(row);
           }
         }
-        return data;
+        return { data, headers };
       }
     } catch (error) {
       console.error('Error extracting original file data:', error);
@@ -634,6 +641,113 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
     resetState();
   }, [resetState]);
 
+  // Validation modal handlers
+  const handleDeleteInvalidRecords = useCallback(async (pairIds: string[]) => {
+    setIsDeletingInvalidRecords(true);
+    try {
+      // Call API to delete invalid pairs from database
+      const response = await fetch('/api/duplicate-pairs/delete-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pairIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete invalid records');
+      }
+
+      const result = await response.json();
+      console.log('Deleted invalid pairs:', result);
+
+      // Update validation pairs by removing deleted ones
+      setValidationPairs(prevPairs => 
+        prevPairs.filter(pair => !pairIds.includes(pair.id))
+      );
+
+      // Show success message
+      toast({
+        title: "Records Deleted",
+        description: `Successfully removed ${pairIds.length} invalid record pairs`,
+        variant: "default"
+      });
+
+      // Close modal if no more pairs to validate
+      const remainingPairs = validationPairs.filter(pair => !pairIds.includes(pair.id));
+      const validationResults = performComprehensiveValidation(remainingPairs);
+      
+      if (validationResults.invalidDuplicatePairs.length === 0 && validationResults.completelyInvalidPairs.length === 0) {
+        setShowValidationModal(false);
+        setValidationPairs([]);
+      }
+
+    } catch (error) {
+      console.error('Error deleting invalid records:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete invalid records",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeletingInvalidRecords(false);
+    }
+  }, [validationPairs, toast]);
+
+  const handleMovePair = useCallback(async (pairId: string, targetCategory: 'valid' | 'invalid_duplicates' | 'completely_invalid') => {
+    try {
+      // Update pair status in database
+      const response = await fetch(`/api/duplicate-pairs/${pairId}/update`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          status: targetCategory === 'valid' ? 'pending' : 'skipped',
+          validation_category: targetCategory 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update pair status');
+      }
+
+      // Update local state
+      setValidationPairs(prevPairs => 
+        prevPairs.map(pair => 
+          pair.id === pairId 
+            ? { ...pair, status: targetCategory === 'valid' ? 'pending' as const : 'skipped' as const }
+            : pair
+        )
+      );
+
+      toast({
+        title: "Pair Updated",
+        description: `Moved pair to ${targetCategory.replace('_', ' ')} category`,
+        variant: "default"
+      });
+
+    } catch (error) {
+      console.error('Error moving pair:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update pair status",
+        variant: "destructive"
+      });
+    }
+  }, [toast]);
+
+  const handleRefreshGrid = useCallback(() => {
+    // Trigger a refresh of the data grid if needed
+    // This would typically call the parent component's refresh function
+    console.log('Refreshing data grid after validation changes');
+  }, []);
+
+  const handleCloseValidationModal = useCallback(() => {
+    setShowValidationModal(false);
+    setValidationPairs([]);
+  }, []);
+
   const handleDeduplicate = useCallback(async () => {
     if (!file || isLoading) return;
 
@@ -676,8 +790,8 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
       
       // Extract and store original file data for row-by-row comparison
       try {
-        const originalFileData = await extractOriginalFileData(file);
-        if (originalFileData && originalFileData.length > 0) {
+        const extractedFileData = await extractOriginalFileData(file);
+        if (extractedFileData && extractedFileData.data.length > 0) {
           const response = await fetch('/api/sessions/original-data', {
             method: 'POST',
             headers: {
@@ -685,12 +799,15 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
             },
             body: JSON.stringify({
               sessionId: sessionId,
-              fileData: originalFileData
+              fileData: extractedFileData.data,
+              headers: extractedFileData.headers
             })
           });
           
           if (!response.ok) {
             console.warn('Failed to store original file data:', await response.text());
+          } else {
+            console.log('Successfully stored original file data with headers');
           }
         }
       } catch (error) {
@@ -786,6 +903,29 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
         });
         
         console.log(`Saving ${validDuplicates.length} valid pairs out of ${transformedDuplicates.length} transformed`);
+        
+        // Perform comprehensive validation on the pairs
+        const validationResults = performComprehensiveValidation(validDuplicates);
+        
+        // Check if we have invalid pairs that need user attention
+        if (validationResults.invalidDuplicatePairs.length > 0 || validationResults.completelyInvalidPairs.length > 0) {
+          console.log('Validation found invalid pairs:', {
+            invalidDuplicates: validationResults.invalidDuplicatePairs.length,
+            completelyInvalid: validationResults.completelyInvalidPairs.length,
+            totalValid: validationResults.validPairs.length
+          });
+          
+          // Store all pairs for validation modal (including valid ones for context)
+          setValidationPairs(validDuplicates);
+          setShowValidationModal(true);
+          
+          // Show notification about validation findings
+          toast({
+            title: "Data Validation Required",
+            description: `Found ${validationResults.invalidDuplicatePairs.length + validationResults.completelyInvalidPairs.length} pairs requiring review`,
+            variant: "default"
+          });
+        }
         
         if (validDuplicates.length > 0) {
           await saveDuplicatePairs(
@@ -931,6 +1071,16 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
         onLoadExistingSession={handleLoadExistingSession}
         onCreateNewSession={handleCreateNewSession}
         isLoading={isLoading}
+      />
+      
+      <DeleteInvalidRecordsModal
+        isOpen={showValidationModal}
+        onClose={handleCloseValidationModal}
+        onConfirmDelete={handleDeleteInvalidRecords}
+        invalidPairs={validationPairs}
+        isDeleting={isDeletingInvalidRecords}
+        onMovePair={handleMovePair}
+        onRefreshGrid={handleRefreshGrid}
       />
     </>
   );

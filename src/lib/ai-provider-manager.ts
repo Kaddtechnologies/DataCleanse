@@ -2,6 +2,7 @@
  * AI Provider Management System
  * Handles health checks, validation, and automatic fallback between AI providers
  */
+import Anthropic from "@anthropic-ai/sdk";
 
 export interface AIProvider {
   name: string;
@@ -209,32 +210,35 @@ class AIProviderManager {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-      // Anthropic doesn't have a direct health endpoint, so we'll do a minimal completion
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': provider.config.apiKey || '',
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: provider.config.model || 'claude-3-5-haiku-latest',
-          prompt: '\n\nHuman: Hi\n\nAssistant:',
-          max_tokens_to_sample: 1,
-          temperature: 0
-        }),
-        signal: controller.signal
+      const anthropic = new Anthropic();
+
+      const msg = await anthropic.messages.create({
+        model: "claude-opus-4-20250514",
+        max_tokens: 1000,
+        temperature: 1,
+        system: "Respond only with short poems.",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "Why is the ocean salty?"
+              }
+            ]
+          }
+        ]
       });
 
       clearTimeout(timeoutId);
 
-      if (response.ok) {
+      if (msg) {
         console.log(`✅ ${provider.name} is healthy`);
         provider.errorCount = 0;
         return true;
       }
 
-      console.log(`❌ ${provider.name} returned status: ${response.status}`);
+      console.log(`❌ ${provider.name} returned status: ${msg}`);
       return false;
     } catch (error) {
       console.error(`❌ ${provider.name} health check error:`, error);

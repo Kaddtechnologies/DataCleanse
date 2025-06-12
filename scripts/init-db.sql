@@ -107,6 +107,17 @@ CREATE TABLE file_uploads (
     processing_status VARCHAR(20) DEFAULT 'uploaded' CHECK (processing_status IN ('uploaded', 'processing', 'completed', 'failed'))
 );
 
+-- Original file data storage for row-by-row comparison
+CREATE TABLE original_file_data (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID REFERENCES user_sessions(id) ON DELETE CASCADE,
+    row_number INTEGER NOT NULL,
+    row_data JSONB NOT NULL,
+    column_headers JSONB, -- Store original column headers
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, row_number)
+);
+
 -- Primary indexes
 CREATE INDEX idx_duplicate_pairs_session ON duplicate_pairs(session_id);
 CREATE INDEX idx_duplicate_pairs_status ON duplicate_pairs(status);
@@ -117,6 +128,8 @@ CREATE INDEX idx_pair_decisions_session ON pair_decisions(session_id);
 CREATE INDEX idx_pair_decisions_pair ON pair_decisions(pair_id);
 CREATE INDEX idx_session_config_session ON session_config(session_id);
 CREATE INDEX idx_file_uploads_session ON file_uploads(session_id);
+CREATE INDEX idx_original_file_data_session ON original_file_data(session_id);
+CREATE INDEX idx_original_file_data_row ON original_file_data(session_id, row_number);
 
 -- Vector similarity indexes (HNSW for speed)
 CREATE INDEX idx_record1_embedding ON duplicate_pairs USING hnsw (record1_embedding vector_cosine_ops);

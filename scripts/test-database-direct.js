@@ -11,7 +11,7 @@ const crypto = require('crypto');
 
 // Database connection (same as in src/lib/db.ts)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://mdm_user:mdm_password123@localhost:5432/mdm_dedup',
+  connectionString: process.env.DATABASE_URL || 'postgresql://mdm_user:mdm_password123@localhost:5433/mdm_dedup',
   ssl: false,
   max: 20,
   idleTimeoutMillis: 30000,
@@ -619,7 +619,7 @@ async function cleanupTestData() {
 async function runAllTests() {
   console.log('🚀 Starting Direct Database CRUD Tests');
   console.log(`Using test user ID: ${TEST_USER_ID}`);
-  console.log(`Database: postgresql://mdm_user:***@localhost:5432/mdm_dedup`);
+  console.log(`Database: postgresql://mdm_user:***@localhost:5433/mdm_dedup`);
   console.log('=' .repeat(60));
   
   try {

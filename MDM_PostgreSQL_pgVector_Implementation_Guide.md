@@ -27,7 +27,7 @@ docker run --name mdm-postgres \
   -e POSTGRES_DB=mdm_dedup \
   -e POSTGRES_USER=mdm_user \
   -e POSTGRES_PASSWORD=mdm_password123 \
-  -p 5432:5432 \
+  -p 5433:5433 \
   -v mdm_postgres_data:/var/lib/postgresql/data \
   -d pgvector/pgvector:pg16
 ```
@@ -153,10 +153,10 @@ CREATE INDEX idx_pairs_confidence_similarity ON duplicate_pairs(confidence_level
 
 ```bash
 # .env.local
-DATABASE_URL=postgresql://mdm_user:mdm_password123@localhost:5432/mdm_dedup
+DATABASE_URL=postgresql://mdm_user:mdm_password123@localhost:5433/mdm_dedup
 EMBEDDING_API_URL=http://localhost:8000/embed # Your embedding service
 POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
+POSTGRES_PORT=5433
 POSTGRES_DB=mdm_dedup
 POSTGRES_USER=mdm_user
 POSTGRES_PASSWORD=mdm_password123
@@ -616,7 +616,7 @@ services:
       POSTGRES_USER: mdm_user
       POSTGRES_PASSWORD: mdm_password123
     ports:
-      - "5432:5432"
+      - "5433:5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     

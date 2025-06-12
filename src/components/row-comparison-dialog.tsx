@@ -5,8 +5,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, TableIcon, RotateCcw } from 'lucide-react';
+import { Loader2, TableIcon, RotateCcw, AlertTriangle } from 'lucide-react';
 import { cn } from "@/lib/utils";
+import type { CustomerRecord } from '@/types';
 
 interface RowData {
   rowNumber: number;
@@ -19,6 +20,7 @@ interface RowComparisonDialogProps {
   rowNumbers: number[];
   sessionId: string;
   title?: string;
+  fallbackRecords?: CustomerRecord[]; // Fallback data when database query fails
 }
 
 export function RowComparisonDialog({
@@ -26,12 +28,14 @@ export function RowComparisonDialog({
   onClose,
   rowNumbers,
   sessionId,
-  title = "Row Comparison"
+  title = "Row Comparison",
+  fallbackRecords = []
 }: RowComparisonDialogProps) {
   const [rowData, setRowData] = useState<RowData[]>([]);
   const [allColumns, setAllColumns] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usingFallback, setUsingFallback] = useState(false);
 
   useEffect(() => {
     if (isOpen && rowNumbers.length > 0 && sessionId) {
@@ -44,37 +48,92 @@ export function RowComparisonDialog({
     setError(null);
     
     try {
-      const response = await fetch(
-        `/api/sessions/original-data?sessionId=${sessionId}&rowNumbers=${rowNumbers.join(',')}`
-      );
+      // Use the new POST endpoint for row data retrieval
+      const response = await fetch(`/api/sessions/${sessionId}/row-data`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          rowNumbers: rowNumbers
+        })
+      });
       
       if (!response.ok) {
         throw new Error('Failed to fetch row data');
       }
       
-      const data = await response.json();
+      const result = await response.json();
       
-      if (data.data && data.data.length > 0) {
-        setRowData(data.data);
+      if (result.success && result.data.rows && result.data.rows.length > 0) {
+        // Transform the database result format to our RowData format
+        const transformedData = result.data.rows.map((row: any) => ({
+          rowNumber: row.rowNumber,
+          ...row.data
+        }));
         
-        // Extract all unique column names from all rows
-        const columnSet = new Set<string>();
-        data.data.forEach((row: RowData) => {
-          Object.keys(row).forEach(key => {
-            if (key !== 'rowNumber') {
-              columnSet.add(key);
-            }
+        setRowData(transformedData);
+        
+        // Use headers from database if available, otherwise extract from data
+        let columnNames: string[] = [];
+        if (result.data.headers && result.data.headers.length > 0) {
+          columnNames = result.data.headers.filter((header: string) => header !== 'rowNumber');
+        } else {
+          // Fallback to extracting from data
+          const columnSet = new Set<string>();
+          transformedData.forEach((row: RowData) => {
+            Object.keys(row).forEach(key => {
+              if (key !== 'rowNumber') {
+                columnSet.add(key);
+              }
+            });
           });
-        });
-        setAllColumns(Array.from(columnSet).sort());
+          columnNames = Array.from(columnSet);
+        }
+        
+        setAllColumns(columnNames.sort());
+        setUsingFallback(false);
       } else {
-        setError('No data found for the specified rows');
+        // No data found, try fallback
+        tryFallbackData();
       }
     } catch (err) {
       console.error('Error fetching row data:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch row data');
+      // Try fallback data when API fails
+      tryFallbackData();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const tryFallbackData = () => {
+    if (fallbackRecords && fallbackRecords.length > 0) {
+      console.log('Using fallback CustomerRecord data for row comparison');
+      
+      // Transform CustomerRecord data to RowData format
+      const transformedFallbackData = fallbackRecords.map((record, index) => ({
+        rowNumber: record.rowNumber || rowNumbers[index] || (index + 1),
+        ...record
+      }));
+      
+      setRowData(transformedFallbackData);
+      setUsingFallback(true);
+      
+      // Extract column names from CustomerRecord, excluding system fields
+      const systemFields = ['id', 'rowNumber', 'name_score', 'addr_score', 'city_score', 'country_score', 'tpi_score', 'overall_score', 'blockType', 'matchMethod', 'bestNameMatchMethod', 'bestAddrMatchMethod', 'isLowConfidence', 'llm_conf'];
+      const columnSet = new Set<string>();
+      transformedFallbackData.forEach((record) => {
+        Object.keys(record).forEach(key => {
+          if (!systemFields.includes(key)) {
+            columnSet.add(key);
+          }
+        });
+      });
+      
+      setAllColumns(Array.from(columnSet).sort());
+      setError(null);
+    } else {
+      setError('No data found for the specified rows and no fallback data available');
     }
   };
 
@@ -101,7 +160,7 @@ export function RowComparisonDialog({
       case 'identical':
         return 'bg-green-50 dark:bg-green-950/20 border-l-2 border-green-500';
       case 'different':
-        return 'bg-yellow-50 dark:bg-yellow-950/20 border-l-2 border-yellow-500';
+        return 'bg-amber-50 dark:bg-amber-950/20 border-l-2 border-amber-500';
       case 'empty':
         return 'bg-gray-50 dark:bg-gray-950/20 border-l-2 border-gray-400';
       default:
@@ -126,9 +185,18 @@ export function RowComparisonDialog({
             <DialogTitle className="text-xl font-semibold flex items-center gap-2">
               <TableIcon className="w-5 h-5" />
               {title} - Rows {rowNumbers.join(', ')}
+              {usingFallback && (
+                <Badge variant="outline" className="ml-2 text-amber-600 border-amber-500">
+                  <AlertTriangle className="w-3 h-3 mr-1" />
+                  Fallback Data
+                </Badge>
+              )}
             </DialogTitle>
             <p className="text-sm text-muted-foreground">
-              Compare data across rows in an Excel-like format. Scroll horizontally to see all columns.
+              {usingFallback 
+                ? "Showing limited CustomerRecord data as fallback. Complete Excel row data may not be available." 
+                : "Compare data across rows in an Excel-like format. Scroll horizontally to see all columns."
+              }
             </p>
           </DialogHeader>
 
@@ -157,7 +225,7 @@ export function RowComparisonDialog({
                       <span>Identical values</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 bg-yellow-200 border-l-2 border-yellow-500 rounded-sm"></div>
+                      <div className="w-3 h-3 bg-amber-200 border-l-2 border-amber-500 rounded-sm"></div>
                       <span>Different values</span>
                     </div>
                     <div className="flex items-center gap-2">
