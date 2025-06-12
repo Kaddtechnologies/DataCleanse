@@ -226,4 +226,114 @@ export function compareRecords(record1: CustomerRecord, record2: CustomerRecord)
   });
   
   return comparisons;
+}
+
+/**
+ * Check if a record has sufficient address information for comparison
+ * @param record CustomerRecord to check
+ * @returns true if record has address, city, and state/country information
+ */
+export function hasValidAddressInfo(record: CustomerRecord): boolean {
+  const address = record.address?.trim();
+  const city = record.city?.trim();
+  const location = record.country?.trim() || record.state?.trim();
+  
+  // Check if address contains invalid values
+  const invalidValues = ['nan', 'null', 'undefined', '', 'n/a', 'na', 'none', 'unknown'];
+  const isAddressInvalid = !address || invalidValues.includes(address.toLowerCase());
+  const isCityInvalid = !city || invalidValues.includes(city.toLowerCase());
+  const isLocationInvalid = !location || invalidValues.includes(location.toLowerCase());
+  
+  return !isAddressInvalid && !isCityInvalid && !isLocationInvalid;
+}
+
+/**
+ * Check if two records have matching addresses
+ * @param record1 First record
+ * @param record2 Second record
+ * @returns true if addresses match closely
+ */
+export function hasMatchingAddress(record1: CustomerRecord, record2: CustomerRecord): boolean {
+  if (!hasValidAddressInfo(record1) || !hasValidAddressInfo(record2)) {
+    return false;
+  }
+  
+  const normalizeAddress = (addr: string) => addr.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  const normalizeLocation = (loc: string) => loc.toLowerCase().trim();
+  
+  const addr1 = normalizeAddress(record1.address || '');
+  const addr2 = normalizeAddress(record2.address || '');
+  const city1 = normalizeLocation(record1.city || '');
+  const city2 = normalizeLocation(record2.city || '');
+  const country1 = normalizeLocation(record1.country || record1.state || '');
+  const country2 = normalizeLocation(record2.country || record2.state || '');
+  
+  return addr1 === addr2 && city1 === city2 && country1 === country2;
+}
+
+/**
+ * Check if a record is completely invalid (both name and address are invalid)
+ * @param record CustomerRecord to check
+ * @returns true if both name and address are invalid
+ */
+export function isCompletelyInvalidRecord(record: CustomerRecord): boolean {
+  return isInvalidNameRecord(record) && !hasValidAddressInfo(record);
+}
+
+/**
+ * Categorize invalid record pairs into meaningful groups
+ * @param pairs Array of DuplicatePair
+ * @returns Categorized pairs
+ */
+export function categorizeInvalidPairs(pairs: DuplicatePair[]): {
+  validPairs: DuplicatePair[];
+  invalidNameValidAddressPairs: DuplicatePair[]; // Invalid name but valid address - user decision needed
+  completelyInvalidPairs: DuplicatePair[]; // Both name and address invalid - batch delete
+  statistics: {
+    totalValid: number;
+    totalInvalidNameValidAddress: number;
+    totalCompletelyInvalid: number;
+    totalRecordsAffected: number;
+  };
+} {
+  const validPairs: DuplicatePair[] = [];
+  const invalidNameValidAddressPairs: DuplicatePair[] = [];
+  const completelyInvalidPairs: DuplicatePair[] = [];
+  
+  pairs.forEach(pair => {
+    const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+    const record1CompletelyInvalid = isCompletelyInvalidRecord(pair.record1);
+    const record2CompletelyInvalid = isCompletelyInvalidRecord(pair.record2);
+    
+    if (!record1Invalid && !record2Invalid) {
+      // Both records have valid names
+      validPairs.push(pair);
+    } else if (record1CompletelyInvalid || record2CompletelyInvalid) {
+      // At least one record is completely invalid (both name and address invalid)
+      completelyInvalidPairs.push(pair);
+    } else if ((record1Invalid || record2Invalid) && hasMatchingAddress(pair.record1, pair.record2)) {
+      // One or both records have invalid names but valid matching addresses - needs user decision
+      invalidNameValidAddressPairs.push(pair);
+    } else {
+      // One record has invalid name but addresses don't match or are invalid
+      completelyInvalidPairs.push(pair);
+    }
+  });
+  
+  const totalRecordsAffected = completelyInvalidPairs.reduce((count, pair) => {
+    const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+    return count + (record1Invalid ? 1 : 0) + (record2Invalid ? 1 : 0);
+  }, 0);
+  
+  return {
+    validPairs,
+    invalidNameValidAddressPairs,
+    completelyInvalidPairs,
+    statistics: {
+      totalValid: validPairs.length,
+      totalInvalidNameValidAddress: invalidNameValidAddressPairs.length,
+      totalCompletelyInvalid: completelyInvalidPairs.length,
+      totalRecordsAffected
+    }
+  };
 } 

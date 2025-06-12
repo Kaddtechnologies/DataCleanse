@@ -9,8 +9,9 @@ import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle, AlertTriangle, FileText, Trash2 } from 'lucide-react';
-import { separateValidAndInvalidPairs } from '@/utils/record-validation';
+import { categorizeInvalidPairs, checkPairForInvalidNames } from '@/utils/record-validation';
 import { DeleteInvalidRecordsModal } from '@/components/delete-invalid-records-modal';
+import { MergeHighConfidencePairsModal } from '@/components/merge-high-confidence-pairs-modal';
 import {
   Dialog,
   DialogContent,
@@ -39,10 +40,11 @@ export default function HomePage() {
   const [duplicateData, setDuplicateData] = useState<DuplicatePair[]>([]);
   const [selectedPairForReview, setSelectedPairForReview] = useState<DuplicatePair | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [loadingType, setLoadingType] = useState<'processing' | 'loading_session'>('processing');
   const { toast } = useToast();
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [isBulkMerging, setIsBulkMerging] = useState(false);
-  const [showMergeConfirmation, setShowMergeConfirmation] = useState(false);
+  const [showMergeModal, setShowMergeModal] = useState(false);
   const [pairsToMerge, setPairsToMerge] = useState<DuplicatePair[]>([]);
   const [hasBulkMergedThisSession, setHasBulkMergedThisSession] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -53,10 +55,14 @@ export default function HomePage() {
   const [sessionMetadata, setSessionMetadata] = useState<Record<string, any> | null>(null);
   const [sessionStatus, setSessionStatus] = useState<'none' | 'ready' | 'active'>('none');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [sessionToLoadInFileUpload, setSessionToLoadInFileUpload] = useState<string | null>(null);
+  const [refreshStatsCounter, setRefreshStatsCounter] = useState(0);
   
   // Invalid records state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [invalidRecordPairs, setInvalidRecordPairs] = useState<DuplicatePair[]>([]);
+  const [summaryMessage, setSummaryMessage] = useState<string | null>(null);
 
   const fetchAiAnalysisForPair = async (pairInput: Omit<DuplicatePair, 'status' | 'aiConfidence' | 'aiReasoning'>): Promise<Partial<DuplicatePair>> => {
     // Decide if AI analysis should run (e.g., based on score or if not already analyzed)
@@ -93,6 +99,7 @@ export default function HomePage() {
 
   const handleFileProcessed = async (apiResponse: any) => {
     setIsLoadingData(true);
+    setLoadingType('processing');
     setSelectedRowIds(new Set()); // Clear selection on new file
     
     // Handle session status based on response
@@ -115,10 +122,18 @@ export default function HomePage() {
     setHasBulkMergedThisSession(false); // Reset bulk merge flag for new upload
 
     try {
+      // Check if this is session loading data (has fromSessionLoad flag)
+      if (apiResponse.fromSessionLoad) {
+        // This is a session loading call - don't overwrite data, just update loading state
+        setIsLoadingData(false);
+        return;
+      }
+      
       // Check if duplicates array exists and has items
-      if (!apiResponse.results.duplicates || apiResponse.results.duplicates.length === 0) {
+      if (!apiResponse.results?.duplicates || apiResponse.results.duplicates.length === 0) {
         // Clear the data and return early
         setDuplicateData([]);
+        setIsLoadingData(false);
         return;
       }
       
@@ -173,19 +188,39 @@ export default function HomePage() {
         }));
       }).flat();
 
-      setDuplicateData(duplicateGroups);
+      // CRITICAL: First filter out all invalid records before any processing
+      const categorizedPairs = categorizeInvalidPairs(duplicateGroups);
+      const validPairs = categorizedPairs.validPairs;
+      const invalidNameValidAddressPairs = categorizedPairs.invalidNameValidAddressPairs; // Need user decision
+      const completelyInvalidPairs = categorizedPairs.completelyInvalidPairs; // Batch delete candidates
       
-      // Only show toast for successful deduplication with actual results
-      if (duplicateGroups.length > 0) {
-        toast({
-          title: "Deduplication Complete",
-          description: `Found ${apiResponse.results.stats.total_potential_duplicate_records} potential duplicates in ${apiResponse.results.stats.total_master_records_with_duplicates} groups.`,
-          variant: "default"
-        });
-        
-        // Update last saved timestamp since data was successfully processed and saved
-        setLastSaved(new Date());
+      console.log('Categorization results:', {
+        total: duplicateGroups.length,
+        valid: validPairs.length,
+        invalidNameValidAddress: invalidNameValidAddressPairs.length,
+        completelyInvalid: completelyInvalidPairs.length
+      });
+
+      // Set the data - include both valid pairs and invalid name + valid address pairs in main grid
+      // Valid pairs are eligible for merge operations, invalid name + valid address pairs need user review
+      const gridData = [...validPairs, ...invalidNameValidAddressPairs];
+      setDuplicateData(gridData);
+      setInvalidRecordPairs(completelyInvalidPairs); // Only completely invalid pairs for batch delete
+      
+      // Update summary message
+      let summaryMessage = '';
+      if (invalidNameValidAddressPairs.length > 0 || completelyInvalidPairs.length > 0) {
+        const parts: string[] = [];
+        if (invalidNameValidAddressPairs.length > 0) {
+          parts.push(`${invalidNameValidAddressPairs.length} pairs need user review (missing names)`);
+        }
+        if (completelyInvalidPairs.length > 0) {
+          parts.push(`${completelyInvalidPairs.length} completely invalid pairs found`);
+        }
+        summaryMessage = parts.join(' and ');
       }
+      
+      setSummaryMessage(summaryMessage || null);
     } catch (error) {
       console.error('Error processing API response:', error);
       toast({
@@ -281,8 +316,14 @@ export default function HomePage() {
   };
 
   const handleBulkMerge = () => {
-    // Only consider pending pairs with both high AI confidence AND high similarity score
-    const eligiblePairs = duplicateData.filter(pair => {
+    // First filter out any pairs with invalid names - these should never be merged
+    const validNamePairs = duplicateData.filter(pair => {
+      const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+      return !record1Invalid && !record2Invalid;
+    });
+    
+    // Only consider pending pairs with both high AI confidence AND high similarity score from valid name pairs
+    const eligiblePairs = validNamePairs.filter(pair => {
       // Only consider pending pairs
       if (pair.status !== 'pending') return false;
       
@@ -291,22 +332,29 @@ export default function HomePage() {
     });
 
     if (eligiblePairs.length === 0) {
+      const invalidNameCount = duplicateData.length - validNamePairs.length;
+      let message = "No pending pairs with high confidence found. Only pairs with both high AI confidence and ≥98% similarity score are eligible for automatic merging.";
+      
+      if (invalidNameCount > 0) {
+        message += ` Note: ${invalidNameCount} pairs with invalid names were excluded from merge consideration.`;
+      }
+      
       toast({
         title: "No Eligible Pairs",
-        description: "No pending pairs with high confidence found. Only pairs with both high AI confidence and ≥98% similarity score are eligible for automatic merging.",
+        description: message,
         variant: "destructive"
       });
       return;
     }
 
-    // Store pairs to merge and show confirmation dialog
+    // Store pairs to merge and show modal
     setPairsToMerge(eligiblePairs);
-    setShowMergeConfirmation(true);
+    setShowMergeModal(true);
   };
 
   const confirmBulkMerge = async () => {
     setIsBulkMerging(true);
-    setShowMergeConfirmation(false);
+    setShowMergeModal(false);
     
     // Create a temporary array for updates
     let updatedData = [...duplicateData];
@@ -335,7 +383,7 @@ export default function HomePage() {
   };
 
   const cancelBulkMerge = () => {
-    setShowMergeConfirmation(false);
+    setShowMergeModal(false);
     setPairsToMerge([]);
   };
 
@@ -426,10 +474,13 @@ export default function HomePage() {
     );
   };
 
-  // Separate valid and invalid pairs
-  const { validPairs, invalidPairs } = useMemo(() => 
-    separateValidAndInvalidPairs(duplicateData || []), [duplicateData]
+  // Categorize valid and invalid pairs
+  const categorizedData = useMemo(() => 
+    categorizeInvalidPairs(duplicateData || []), [duplicateData]
   );
+  
+  const { validPairs, invalidNameValidAddressPairs, completelyInvalidPairs, statistics } = categorizedData;
+  const invalidPairs = completelyInvalidPairs;
 
   // Handle deleting invalid records from modal
   const handleDeleteInvalidRecordsFromModal = async (pairIds: string[]) => {
@@ -449,6 +500,8 @@ export default function HomePage() {
   // Handle deleting invalid records
   // Handle loading a session from the header
   const handleLoadSession = async (sessionId: string) => {
+    setIsLoadingData(true); // Show loading indicator
+    setLoadingType('loading_session');
     try {
       // Load session data from database
       const response = await fetch(`/api/sessions/${sessionId}/load`);
@@ -458,17 +511,34 @@ export default function HomePage() {
       
       const sessionData = await response.json();
       
-      // Update state with loaded session data
-      if (sessionData.duplicatePairs) {
-        setDuplicateData(sessionData.duplicatePairs);
+      // Update state with loaded session data using correct API response format
+      if (sessionData.success && sessionData.duplicate_pairs) {
+        // Restore data grid state
+        setDuplicateData(sessionData.duplicate_pairs);
         setCurrentSessionId(sessionId);
-        setSessionMetadata(sessionData.metadata || {});
+        setSessionMetadata(sessionData.session || {});
+        setSessionStatus('active');
+        setLastSaved(new Date()); // Set last saved to now since we just loaded
+        
+        // Check if bulk merge was already performed by looking for merged records
+        const hasMergedRecords = sessionData.duplicate_pairs.some((pair: any) => pair.status === 'merged');
+        setHasBulkMergedThisSession(hasMergedRecords);
+        
+        // Trigger file upload component to restore its state
+        setSessionToLoadInFileUpload(sessionId);
+        
+        // Clear the session loading trigger after a brief delay to allow the file upload component to process it
+        setTimeout(() => {
+          setSessionToLoadInFileUpload(null);
+        }, 100);
         
         toast({
           title: "Session Loaded",
-          description: `Loaded session with ${sessionData.duplicatePairs.length} duplicate pairs.`,
+          description: `Loaded "${sessionData.session.session_name}" with ${sessionData.duplicate_pairs.length} duplicate pairs.`,
           variant: "default"
         });
+      } else {
+        throw new Error('Invalid session data format');
       }
     } catch (error) {
       console.error('Error loading session:', error);
@@ -477,6 +547,8 @@ export default function HomePage() {
         description: "Failed to load session. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setIsLoadingData(false); // Hide loading indicator
     }
   };
 
@@ -514,6 +586,11 @@ export default function HomePage() {
     }
   };
 
+  // Session stats refresh handler
+  const handleSessionStatsChanged = () => {
+    setRefreshStatsCounter(prev => prev + 1);
+  };
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <AppHeader 
@@ -521,6 +598,7 @@ export default function HomePage() {
         sessionId={currentSessionId || undefined}
         sessionStatus={sessionStatus}
         lastSaved={lastSaved}
+        refreshStatsCounter={refreshStatsCounter}
       />
       <main className="container mx-auto p-4 md:p-8 space-y-8 flex-grow">
         <section aria-labelledby="file-upload-heading">
@@ -529,14 +607,24 @@ export default function HomePage() {
             onFileProcessed={handleFileProcessed}
             onLoadSession={handleLoadSession}
             onFileReady={handleFileReady}
+            sessionToLoad={sessionToLoadInFileUpload}
           />
         </section>
 
         {isLoadingData && (
           <div className="flex flex-col items-center justify-center text-center p-10 bg-card rounded-lg shadow-md">
             <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
-            <p className="text-xl font-semibold text-primary">Analyzing Data...</p>
-            <p className="text-muted-foreground">Please wait while we process your file and identify duplicates.</p>
+            {loadingType === 'loading_session' ? (
+              <>
+                <p className="text-xl font-semibold text-primary">Loading Session...</p>
+                <p className="text-muted-foreground">Please wait while we restore your saved session and data.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-xl font-semibold text-primary">Analyzing Data...</p>
+                <p className="text-muted-foreground">Please wait while we process your file and identify duplicates.</p>
+              </>
+            )}
           </div>
         )}
 
@@ -631,7 +719,7 @@ export default function HomePage() {
                         <h3 className="font-medium text-sm text-red-800 dark:text-red-200">Invalid Records Detected</h3>
                       </div>
                       <p className="text-xs text-red-700 dark:text-red-300">
-                        Found {invalidPairs.length} duplicate pair{invalidPairs.length !== 1 ? 's' : ''} with invalid names (empty, NaN, null, or undefined).
+                        Found {statistics.totalInvalidNameValidAddress} pairs needing user review and {statistics.totalCompletelyInvalid} completely invalid pairs affecting {statistics.totalRecordsAffected} total records.
                       </p>
                     </div>
                     <Button
@@ -668,6 +756,7 @@ export default function HomePage() {
                 onToggleRowSelection={handleToggleRowSelection}
                 onToggleSelectAll={handleToggleSelectAll}
                 sessionId={currentSessionId || undefined}
+                onSessionStatsChanged={handleSessionStatsChanged}
               />
              
             </section>
@@ -696,37 +785,20 @@ export default function HomePage() {
           onEnhancedAnalysisComplete={handleEnhancedAnalysisComplete}
           onCacheAnalysis={handleCacheAnalysis}
           sessionId={currentSessionId || undefined}
+          onSessionStatsChanged={handleSessionStatsChanged}
         />
       )}
       
-      {/* Confirmation Dialog for Bulk Merge */}
-      <Dialog open={showMergeConfirmation} onOpenChange={setShowMergeConfirmation}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirm Bulk Merge</DialogTitle>
-            <DialogDescription>
-              You are about to merge {pairsToMerge.length} high confidence duplicate pairs.
-              This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2 py-3">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            <p className="text-sm text-muted-foreground">
-              Only pairs with both high AI confidence and ≥98% similarity score will be merged.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={cancelBulkMerge}>Cancel</Button>
-            <Button
-              variant="default"
-              className="bg-green-500 hover:bg-green-600"
-              onClick={confirmBulkMerge}
-            >
-              Confirm Merge
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Merge High Confidence Pairs Modal */}
+      {showMergeModal && (
+        <MergeHighConfidencePairsModal
+          isOpen={showMergeModal}
+          onClose={cancelBulkMerge}
+          onConfirmMerge={confirmBulkMerge}
+          highConfidencePairs={pairsToMerge}
+          isMerging={isBulkMerging}
+        />
+      )}
 
       {/* Delete Invalid Records Modal */}
       {showDeleteModal && (

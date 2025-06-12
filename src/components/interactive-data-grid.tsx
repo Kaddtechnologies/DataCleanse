@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { exportDuplicatePairsToExcel } from '@/utils/duplicate-pairs-export';
-import { checkPairForInvalidNames, getDisplayName } from '@/utils/record-validation';
+import { checkPairForInvalidNames, getDisplayName, hasValidAddressInfo } from '@/utils/record-validation';
 import { RowComparisonDialog } from '@/components/row-comparison-dialog';
 import {
   ColumnDef,
@@ -112,6 +112,7 @@ interface InteractiveDataGridProps {
   onToggleRowSelection: (pairId: string) => void;
   onToggleSelectAll: () => void;
   sessionId?: string;
+  onSessionStatsChanged?: () => void;
 }
 
 // Executive-level Status Badge
@@ -224,7 +225,8 @@ export function InteractiveDataGrid({
   selectedRowIds,
   onToggleRowSelection,
   onToggleSelectAll,
-  sessionId
+  sessionId,
+  onSessionStatsChanged
 }: InteractiveDataGridProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
@@ -249,6 +251,10 @@ export function InteractiveDataGrid({
     if (sessionId) {
       try {
         await updateDuplicatePair(pairId, { status });
+        // Trigger session stats refresh
+        if (onSessionStatsChanged) {
+          onSessionStatsChanged();
+        }
       } catch (error) {
         console.error('Failed to save status to database:', error);
       }
@@ -300,9 +306,19 @@ export function InteractiveDataGrid({
     );
   };
 
-  // Filter data based on status, confidence, and smart search
+  // Filter data based on status, confidence, smart search, and invalid names
   const filteredData = useMemo(() => {
     return data.filter(pair => {
+      // Filter out pairs where both records are completely invalid (both name and address invalid)
+      const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+      const record1CompletelyInvalid = record1Invalid && !hasValidAddressInfo(pair.record1);
+      const record2CompletelyInvalid = record2Invalid && !hasValidAddressInfo(pair.record2);
+      
+      // Exclude pairs where at least one record is completely invalid
+      if (record1CompletelyInvalid || record2CompletelyInvalid) {
+        return false;
+      }
+      
       if (statusFilter !== "all" && pair.status !== statusFilter) {
         return false;
       }
@@ -354,6 +370,9 @@ export function InteractiveDataGrid({
       header: "Record 1",
       cell: ({ row }) => {
         const { record1Invalid } = checkPairForInvalidNames(row.original);
+        const record1HasValidAddress = hasValidAddressInfo(row.original.record1);
+        const needsUserDecision = record1Invalid && record1HasValidAddress;
+        
         return (
           <div className="space-y-2">
             <div className="flex items-start space-x-3">
@@ -362,7 +381,9 @@ export function InteractiveDataGrid({
                 <div className={`font-medium text-sm ${record1Invalid ? 'text-red-600' : 'text-foreground'} truncate`}>
                   {row.original.record1.name}
                   {record1Invalid && (
-                    <span className="ml-2 text-xs text-red-500 font-normal">(invalid)</span>
+                    <span className="ml-2 text-xs text-red-500 font-normal">
+                      {needsUserDecision ? '(no name - needs review)' : '(invalid)'}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center space-x-2 mt-1">
@@ -401,6 +422,9 @@ export function InteractiveDataGrid({
       header: "Record 2", 
       cell: ({ row }) => {
         const { record2Invalid } = checkPairForInvalidNames(row.original);
+        const record2HasValidAddress = hasValidAddressInfo(row.original.record2);
+        const needsUserDecision = record2Invalid && record2HasValidAddress;
+        
         return (
           <div className="space-y-2">
             <div className="flex items-start space-x-3">
@@ -409,7 +433,9 @@ export function InteractiveDataGrid({
                 <div className={`font-medium text-sm ${record2Invalid ? 'text-red-600' : 'text-foreground'} truncate`}>
                   {row.original.record2.name}
                   {record2Invalid && (
-                    <span className="ml-2 text-xs text-red-500 font-normal">(invalid)</span>
+                    <span className="ml-2 text-xs text-red-500 font-normal">
+                      {needsUserDecision ? '(no name - needs review)' : '(invalid)'}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center space-x-2 mt-1">
@@ -577,6 +603,12 @@ export function InteractiveDataGrid({
             <p className="text-sm text-muted-foreground">
               Showing {filteredData.length} of {data.length} potential duplicate pairs
               {smartSearchQuery && ` (Search: "${smartSearchQuery}")`}
+              {data.some(pair => {
+                const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+                const record1CompletelyInvalid = record1Invalid && !hasValidAddressInfo(pair.record1);
+                const record2CompletelyInvalid = record2Invalid && !hasValidAddressInfo(pair.record2);
+                return record1CompletelyInvalid || record2CompletelyInvalid;
+              }) && ` • Pairs with completely invalid records are hidden`}
             </p>
           </div>
         </div>
@@ -665,14 +697,24 @@ export function InteractiveDataGrid({
             <TableBody>
               {table.getRowModel().rows?.length ? (
                 table.getRowModel().rows.map((row, index) => {
-                  const { hasInvalidName } = checkPairForInvalidNames(row.original);
+                  const { hasInvalidName, record1Invalid, record2Invalid } = checkPairForInvalidNames(row.original);
+                  const record1HasValidAddress = hasValidAddressInfo(row.original.record1);
+                  const record2HasValidAddress = hasValidAddressInfo(row.original.record2);
+                  const needsUserDecision = (record1Invalid && record1HasValidAddress) || (record2Invalid && record2HasValidAddress);
+                  
+                  let rowClassName = "border-border/50 hover:bg-muted/30 transition-colors";
+                  if (needsUserDecision) {
+                    rowClassName += " bg-amber-50/50 dark:bg-amber-950/10"; // Amber for user decision needed
+                  } else if (hasInvalidName) {
+                    rowClassName += " bg-red-50/50 dark:bg-red-950/10"; // Red for other invalid cases
+                  }
+                  rowClassName += ` ${index % 2 === 0 ? " bg-background" : " bg-muted/10"}`;
+                  
                   return (
                     <TableRow
                       key={row.id}
                       data-state={row.getIsSelected() && "selected"}
-                      className={`border-border/50 hover:bg-muted/30 transition-colors ${
-                        hasInvalidName ? "bg-red-50/50 dark:bg-red-950/10" : ""
-                      } ${index % 2 === 0 ? "bg-background" : "bg-muted/10"}`}
+                      className={rowClassName}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell 

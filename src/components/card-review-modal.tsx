@@ -31,6 +31,7 @@ interface CardReviewModalProps {
   }) => void;
   onCacheAnalysis?: (pairId: string, analysis: any) => void;
   sessionId?: string;
+  onSessionStatsChanged?: () => void;
 }
 
 const RecordDetail = ({ icon: Icon, label, value, showIfEmpty = false }: {
@@ -395,7 +396,8 @@ export function CardReviewModal({
   onAnalyzeConfidence,
   onEnhancedAnalysisComplete,
   onCacheAnalysis,
-  sessionId
+  sessionId,
+  onSessionStatsChanged
 }: CardReviewModalProps) {
   if (!pair) return null;
   
@@ -414,6 +416,10 @@ export function CardReviewModal({
     // Save to database
     try {
       await updateDuplicatePair(pairId, { status: resolution });
+      // Trigger session stats refresh
+      if (onSessionStatsChanged) {
+        onSessionStatsChanged();
+      }
     } catch (error) {
       console.error('Failed to save decision to database:', error);
       // Could show a toast notification here for failed saves
@@ -477,7 +483,7 @@ export function CardReviewModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}} modal={true}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={true}>
       <DialogContent className="max-w-6xl w-[95vw] p-0 bg-gradient-to-br from-slate-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700">
         {/* Executive Header */}
         <div className="relative bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-300 dark:border-slate-600">
@@ -591,12 +597,13 @@ export function CardReviewModal({
             </div>
           </div>
         </ScrollArea>
-         {/* <DialogClose asChild>
-            <Button variant="ghost" size="icon" className="absolute right-4 top-4" onClick={onClose}>
-              <X className="h-4 w-4" />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogClose> */}
+{/*         
+        <DialogClose asChild>
+          <Button variant="ghost" size="icon" className="absolute right-4 top-4 z-50 text-white/80 hover:text-white hover:bg-white/10 transition-colors" onClick={onClose}>
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </Button>
+        </DialogClose> */}
       </DialogContent>
       
       {/* Row Comparison Dialog */}

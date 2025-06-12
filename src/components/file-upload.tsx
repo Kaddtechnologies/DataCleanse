@@ -63,12 +63,14 @@ type DeduplicationResponse = {
   results: DeduplicationResults;
   error: string | null;
   sessionId?: string;
+  fromSessionLoad?: boolean;
 };
 
 interface FileUploadProps {
   onFileProcessed: (data: DeduplicationResponse) => void;
   onLoadSession?: (sessionId: string) => void;
   onFileReady?: () => void;
+  sessionToLoad?: string | null;
 }
 
 // Processing time estimates per 100 records (in seconds)
@@ -82,7 +84,7 @@ const PROCESSING_TIMES = {
   all_ai: 3.30
 };
 
-export function FileUpload({ onFileProcessed, onLoadSession, onFileReady }: FileUploadProps): JSX.Element {
+export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessionToLoad }: FileUploadProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -450,6 +452,152 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady }: File
     }
   }, []);
 
+  // Session loading function to restore file upload state
+  const loadSessionState = useCallback(async (sessionId: string) => {
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/load`);
+      if (!response.ok) {
+        throw new Error('Failed to load session');
+      }
+      
+      const sessionData = await response.json();
+      
+      if (sessionData.success) {
+        // Restore session info
+        setCurrentSessionId(sessionId);
+        
+        // Create a mock file object for the session's file
+        const fileName = sessionData.session.file_name;
+        const mockFile = new File([''], fileName, { type: 'text/csv' });
+        setFile(mockFile);
+        
+        // Restore blocking configuration from session config
+        const config = sessionData.configuration || {};
+        setBlockingConfig({
+          usePrefix: config.use_prefix !== undefined ? config.use_prefix : true,
+          useMetaphone: config.use_metaphone !== undefined ? config.use_metaphone : false,
+          useSoundex: config.use_soundex !== undefined ? config.use_soundex : false,
+          useNgram: config.use_ngram !== undefined ? config.use_ngram : false,
+          useAi: config.use_ai !== undefined ? config.use_ai : false,
+          nameThreshold: config.name_threshold || 70,
+          overallThreshold: config.overall_threshold || 70
+        });
+        
+        // Extract and restore column mappings from the first duplicate pair
+        if (sessionData.duplicate_pairs && sessionData.duplicate_pairs.length > 0) {
+          const firstPair = sessionData.duplicate_pairs[0];
+          
+          // Extract column headers from the record structure
+          const record1 = firstPair.record1 || {};
+          const record2 = firstPair.record2 || {};
+          
+          // Get all unique field names from both records
+          const allFields = new Set([
+            ...Object.keys(record1),
+            ...Object.keys(record2)
+          ]);
+          
+          // Filter out system fields and create column headers
+          const systemFields = ['id', 'rowNumber', 'overall_score', 'isLowConfidence'];
+          const headers = Array.from(allFields).filter(field => !systemFields.includes(field));
+          setColumnHeaders(headers);
+          
+          // Set up column mappings based on the fields we find
+          const mappings: Record<string, string> = {};
+          if (headers.includes('name')) mappings.customer_name = 'name';
+          if (headers.includes('address')) mappings.address = 'address';
+          if (headers.includes('city')) mappings.city = 'city';
+          if (headers.includes('country')) mappings.country = 'country';
+          if (headers.includes('tpi')) mappings.tpi = 'tpi';
+          
+          setColumnMap(mappings);
+          
+          // Estimate row count from duplicate pairs (this is approximate)
+          const estimatedRowCount = Math.max(
+            ...sessionData.duplicate_pairs.map((pair: any) => 
+              Math.max(
+                pair.record1?.rowNumber || 0,
+                pair.record2?.rowNumber || 0
+              )
+            )
+          );
+          setRowCount(estimatedRowCount);
+        }
+        
+        // Calculate confidence level statistics from duplicate pairs
+        const duplicatePairs = sessionData.duplicate_pairs || [];
+        const highConfidenceCount = duplicatePairs.filter((pair: any) => {
+          const score = pair.enhancedScore || (pair.similarityScore * 100);
+          return score >= 98;
+        }).length;
+        const mediumConfidenceCount = duplicatePairs.filter((pair: any) => {
+          const score = pair.enhancedScore || (pair.similarityScore * 100);
+          return score >= 90 && score < 98;
+        }).length;
+        const lowConfidenceCount = duplicatePairs.filter((pair: any) => {
+          const score = pair.enhancedScore || (pair.similarityScore * 100);
+          return score < 90;
+        }).length;
+
+        // Set deduplication results to show the session has been processed with real data
+        const sessionResults = {
+          message: "Session loaded successfully",
+          results: {
+            duplicate_group_count: sessionData.statistics?.total_pairs || 0,
+            total_potential_duplicates: sessionData.statistics?.total_pairs || 0,
+            kpi_metrics: {
+              auto_merge: sessionData.statistics?.merged + sessionData.statistics?.duplicate || 0,
+              needs_review: sessionData.statistics?.pending || 0,
+              needs_ai: 0,
+              total_blocks: 0
+            },
+            stats: {
+              high_confidence_duplicates_groups: highConfidenceCount,
+              medium_confidence_duplicates_groups: mediumConfidenceCount,
+              low_confidence_duplicates_groups: lowConfidenceCount,
+              block_stats: {
+                total_blocks: 0,
+                max_block_size: 0,
+                avg_block_size: 0,
+                records_in_blocks: 0
+              },
+              total_master_records_with_duplicates: sessionData.statistics?.total_pairs || 0,
+              total_potential_duplicate_records: sessionData.statistics?.total_pairs || 0
+            }
+          },
+          error: null,
+          sessionId: sessionId
+        };
+        
+        setDeduplicationResults(sessionResults);
+        
+        // Notify parent component that file is ready
+        if (onFileReady) {
+          onFileReady();
+        }
+        
+        // Call onFileProcessed to initialize the data grid with session data
+        onFileProcessed({
+          ...sessionResults,
+          sessionId: sessionId,
+          fromSessionLoad: true
+        });
+        
+        toast({ 
+          title: "Session Loaded", 
+          description: `Restored session "${sessionData.session.session_name}" with ${sessionData.statistics?.total_pairs || 0} duplicate pairs.`
+        });
+      }
+    } catch (error) {
+      console.error('Error loading session in FileUpload:', error);
+      toast({
+        title: "Error Loading Session",
+        description: "Failed to restore file upload state from session",
+        variant: "destructive"
+      });
+    }
+  }, [setCurrentSessionId, setFile, setBlockingConfig, setColumnHeaders, setColumnMap, setRowCount, setDeduplicationResults, onFileReady, onFileProcessed, toast]);
+
   // File conflict dialog handlers
   const handleLoadExistingSession = useCallback(async (sessionId: string) => {
     if (onLoadSession) {
@@ -673,6 +821,13 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady }: File
       setShowLoadingOverlay(false);
     }
   }, [file, isLoading, convertCsvToUtf8, columnMap, toast, onFileProcessed, setDeduplicationResults, setError, setIsLoading, calculateEstimatedTime, blockingConfig, createSession, saveDuplicatePairs, extractOriginalFileData]);
+
+  // Effect to handle session loading
+  useEffect(() => {
+    if (sessionToLoad) {
+      loadSessionState(sessionToLoad);
+    }
+  }, [sessionToLoad, loadSessionState]);
 
   useEffect(() => {
     // Reset progress and row count if file is removed

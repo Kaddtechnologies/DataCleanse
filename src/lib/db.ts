@@ -3,8 +3,12 @@ import type { CustomerRecord, DuplicatePair } from '@/types';
 
 // Database connection configuration
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://mdm_user:mdm_password123@localhost:5432/mdm_dedup',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  host: 'localhost',
+  port: 5433,
+  database: 'mdm_dedup',
+  user: 'mdm_user',
+  password: 'mdm_password123', // Empty string password for trust authentication
+  ssl: false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -284,7 +288,40 @@ export async function updateDuplicatePair(
       WHERE id = $${paramIndex}
     `;
 
-    await client.query(query, values);
+    const result = await client.query(query, values);
+    
+    // Log the update for debugging
+    console.log(`Updated duplicate pair ${pairId}:`, {
+      updates,
+      rowsAffected: result.rowCount
+    });
+
+    // If status was updated, manually trigger session stats recalculation
+    if (updates.status !== undefined && (result.rowCount ?? 0) > 0) {
+      console.log('Status update detected, checking session progress...');
+      
+      // Get session ID for this pair and update session stats
+      const sessionQuery = 'SELECT session_id FROM duplicate_pairs WHERE id = $1';
+      const sessionResult = await client.query(sessionQuery, [pairId]);
+      
+      if (sessionResult.rows.length > 0) {
+        const sessionId = sessionResult.rows[0].session_id;
+        
+        // Recalculate and update session stats
+        const statsQuery = `
+          UPDATE user_sessions 
+          SET 
+            total_pairs = (SELECT COUNT(*) FROM duplicate_pairs WHERE session_id = $1),
+            processed_pairs = (SELECT COUNT(*) FROM duplicate_pairs WHERE session_id = $1 AND status != 'pending'),
+            last_accessed = CURRENT_TIMESTAMP
+          WHERE id = $1
+          RETURNING total_pairs, processed_pairs
+        `;
+        
+        const statsResult = await client.query(statsQuery, [sessionId]);
+        console.log(`Updated session ${sessionId} stats:`, statsResult.rows[0]);
+      }
+    }
   } finally {
     client.release();
   }

@@ -30,6 +30,7 @@ interface AppHeaderProps {
   sessionId?: string;
   sessionStatus?: 'none' | 'ready' | 'active';
   lastSaved?: Date | null;
+  refreshStatsCounter?: number;
 }
 
 /**
@@ -55,17 +56,23 @@ function ThemeToggle() {
   );
 }
 
-export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, lastSaved }: AppHeaderProps) {
+export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, lastSaved, refreshStatsCounter }: AppHeaderProps) {
   const { theme } = useTheme();
   const logoSrc = theme === "dark" ? "/flowserve_logo_white.svg" : "/flowserve_logo_white.svg";
   const [hasAvailableSessions, setHasAvailableSessions] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [loadingSession, setLoadingSession] = useState(false);
   const [showSessionManager, setShowSessionManager] = useState(false);
+  const [checkingSessions, setCheckingSessions] = useState(true);
 
-  // Check if there are available sessions when component mounts
+  // Check if there are available sessions when component mounts and periodically
   useEffect(() => {
     checkForAvailableSessions();
+    
+    // Set up periodic checking every 30 seconds
+    const interval = setInterval(checkForAvailableSessions, 30000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const checkForAvailableSessions = async () => {
@@ -74,10 +81,20 @@ export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, las
       if (response.ok) {
         const data = await response.json();
         setHasAvailableSessions(data.hasData);
+      } else {
+        setHasAvailableSessions(false);
       }
     } catch (error) {
       console.error('Error checking for sessions:', error);
+      setHasAvailableSessions(false);
+    } finally {
+      setCheckingSessions(false);
     }
+  };
+
+  // Handler for when session availability changes from the dialog
+  const handleSessionsChanged = (hasData: boolean) => {
+    setHasAvailableSessions(hasData);
   };
 
   const handleLoadSession = async (selectedSessionId: string) => {
@@ -126,7 +143,7 @@ export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, las
 
           {/* Executive Controls: Sessions + Theme */}
           <div className="flex items-center space-x-4">
-            {onLoadPreviousSession && hasAvailableSessions && (
+            {onLoadPreviousSession && hasAvailableSessions && !checkingSessions && (
               <button
                 onClick={() => setSessionDialogOpen(true)}
                 className="group relative flex items-center space-x-3 px-4 py-2.5 rounded-xl bg-white/8 hover:bg-white/12 border border-white/15 hover:border-white/25 transition-all duration-300 backdrop-blur-sm"
@@ -197,6 +214,8 @@ export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, las
         onClose={() => setSessionDialogOpen(false)}
         onLoadSession={handleLoadSession}
         isLoading={loadingSession}
+        onSessionsChanged={handleSessionsChanged}
+        onRefreshStats={() => refreshStatsCounter}
       />    
      
     </header>

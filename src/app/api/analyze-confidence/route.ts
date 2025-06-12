@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { analyzeDuplicateConfidence } from '@/ai/flows/analyze-duplicate-confidence';
+import { analyzeWithFallback } from '@/services/multi-provider-ai.service';
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,25 +21,35 @@ export async function POST(request: NextRequest) {
       record2Sample: record2.name || record2.id || 'no name/id'
     });
 
-    const result = await analyzeDuplicateConfidence({
-      record1,
-      record2,
-      fuzzyScore,
-    });
+    // Use the multi-provider service with automatic fallback
+    const result = await analyzeWithFallback(record1, record2, fuzzyScore);
 
     // Debug logging to verify AI response
     console.log('AI Analysis Response:', {
       confidenceLevel: result.confidenceLevel,
       hasRecommendation: !!result.recommendation,
       hasWhat: !!result.what,
-      hasWhy: !!result.why
+      hasWhy: !!result.why,
+      provider: 'Multi-provider with fallback'
     });
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error in analyze-confidence API route:', error);
+    console.error('=== DETAILED ERROR in analyze-confidence API route ===');
+    console.error('Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('Error message:', error instanceof Error ? error.message : String(error));
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error('Full error object:', error);
+    console.error('===================================================');
+    
+    // Return more detailed error info for debugging
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'AI analysis not available - Contact Support' },
+      { 
+        error: 'AI analysis failed', 
+        details: errorMessage,
+        type: error instanceof Error ? error.constructor.name : typeof error
+      },
       { status: 500 }
     );
   }

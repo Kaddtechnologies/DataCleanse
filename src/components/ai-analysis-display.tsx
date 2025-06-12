@@ -223,7 +223,7 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
 
   const fetchAnalysis = useCallback(async () => {
     // If we have cached analysis, use it instead of making an API call
-    if (cachedAnalysis) {
+    if (cachedAnalysis && cachedAnalysis.recommendation?.length > 0 && cachedAnalysis.what?.length > 0 && cachedAnalysis.why?.length > 0) {
       console.log("Using cached AI analysis for this pair");
       setAnalysis(cachedAnalysis);
       setIsLoading(false);
@@ -267,7 +267,7 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
     if (!analyzeFunction) {
       setError("AI analysis function not available");
       setIsLoading(false);
-      setHasAttemptedAnalysis(true);
+      setHasAttemptedAnalysis(false);
       return;
     }
 
@@ -347,6 +347,8 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
           lastAnalyzed: new Date().toISOString()
         });
       }
+      setHasAttemptedAnalysis(true);
+
     } catch (err) {
       console.error("Enhanced AI Analysis Error:", err);
       // More user-friendly error messages
@@ -363,9 +365,10 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
       } else {
         setError("AI analysis temporarily unavailable - please try again or contact support if the issue persists.");
       }
+      setHasAttemptedAnalysis(false);
+
     } finally {
       setIsLoading(false);
-      setHasAttemptedAnalysis(true);
     }
   }, [record1, record2, fuzzyScore, analyzeFunction, cachedAnalysis, onCacheAnalysis, hasAttemptedAnalysis, retryRequested]);
 
@@ -373,6 +376,9 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
   const handleRetry = () => {
     setRetryRequested(true);
     setError(null);
+    setIsLoading(true);
+    setHasAttemptedAnalysis(false);
+    setAnalysis(null);
     fetchAnalysis();
   };
 
@@ -420,7 +426,7 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-destructive-foreground mb-3">{error}</p>
+          <p className="text-sm text-destructive mb-3">{error}</p>
           <Button 
             variant="outline" 
             size="sm" 

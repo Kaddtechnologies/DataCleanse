@@ -18,7 +18,14 @@
       "Bash(find:*)",
       "Bash(for component in accordion avatar chart dropdown-menu menubar popover radio-group sheet skeleton slider switch tabs textarea tooltip)",
       "Bash(do echo \"=== $component ===\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(curl:*)",
+      "Bash(./setup-database.sh:*)",
+      "Bash(bash:*)",
+      "Bash(sed:*)",
+      "Bash(sudo usermod:*)",
+      "Bash(rm:*)",
+      "Bash(npm run build:*)"
     ]
   },
   "enableAllProjectMcpServers": false

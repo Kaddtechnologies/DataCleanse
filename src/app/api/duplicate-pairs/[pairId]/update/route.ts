@@ -4,10 +4,10 @@ import crypto from 'crypto';
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { pairId: string } }
+  { params }: { params: Promise<{ pairId: string }> }
 ) {
   try {
-    const { pairId } = params;
+    const { pairId } = await params;
     const body = await request.json();
     const { 
       status, 

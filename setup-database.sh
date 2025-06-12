@@ -16,7 +16,7 @@ NC='\033[0m' # No Color
 DB_NAME="mdm_dedup"
 DB_USER="mdm_user"
 DB_PASSWORD="mdm_password123"
-DB_PORT="5432"
+DB_PORT="5433"
 CONTAINER_NAME="mdm-postgres"
 REDIS_CONTAINER_NAME="mdm-redis"
 
@@ -221,8 +221,8 @@ REDIS_URL=redis://localhost:6379
 NODE_ENV=development
 
 # AI Configuration (add your API keys here)
-OPENAI_API_KEY=your_openai_api_key_here
-GOOGLE_API_KEY=your_google_api_key_here
+OPENAI_API_KEY=6kEA8jhAvaSiqoIDVUXygVWyLEKsmSUY0zIBOqsNeN2g0O6QWtWuJQQJ99BDACHYHv6XJ3w3AAABACOGTeiK
+GOOGLE_API_KEY=AIzaSyAGxugbJDi84dIQeIvx6moBPdCDwJdhJIw
 
 # Embedding Service Configuration
 EMBEDDING_API_URL=http://localhost:8000/embed

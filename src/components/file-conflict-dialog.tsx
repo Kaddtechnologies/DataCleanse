@@ -60,7 +60,7 @@ export function FileConflictDialog({
           </div>
         </div>
 
-        <div className="p-8 space-y-8 flex-1 overflow-auto">
+        <div className="p-4 sm:p-6 lg:p-8 space-y-6 lg:space-y-8 flex-1 overflow-auto">
           {/* Executive Situation Brief */}
           <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-6">
             <div className="flex items-start gap-4">
@@ -77,12 +77,12 @@ export function FileConflictDialog({
             </div>
           </div>
 
-          {/* Executive Decision Matrix */}
-          <div className="grid md:grid-cols-2 gap-8">
+          {/* Executive Decision Matrix - Responsive Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
             {/* Continue Existing Analytics */}
-            <div className="group relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 overflow-hidden">
+            <div className="group relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col">
               {/* Premium Card Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 dark:from-blue-700 dark:to-blue-800 p-6">
+              <div className="bg-primary-gradient p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
@@ -90,7 +90,7 @@ export function FileConflictDialog({
                     </div>
                     <div>
                       <h3 className="text-lg font-medium text-white tracking-wide">Continue Session</h3>
-                      <p className="text-blue-100 text-sm font-light">Resume existing analysis</p>
+                      <p className="text-white/80 text-sm font-light">Resume existing analysis</p>
                     </div>
                   </div>
                   <div className="w-2 h-8 bg-white/30 rounded-full" />
@@ -98,14 +98,14 @@ export function FileConflictDialog({
               </div>
               
               {/* Executive Session Details */}
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 flex-grow flex flex-col">
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-600">
                   <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-3">{existingSession?.sessionName}</h4>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{existingSession?.fileName}</p>
                   
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center gap-2 mb-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2 mb-3">
                         <Users className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">Records</span>
                       </div>
@@ -114,9 +114,9 @@ export function FileConflictDialog({
                       </div>
                     </div>
                     
-                    <div className="bg-white dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Clock className="w-4 h-4 text-green-600 dark:text-green-400" />
                         <span className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">Accessed</span>
                       </div>
                       <div className="text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -126,10 +126,11 @@ export function FileConflictDialog({
                   </div>
                 </div>
                 
-                <button
+                <div className="mt-auto">
+                  <button
                   onClick={() => onLoadExistingSession(existingSession?.id)}
                   disabled={isLoading}
-                  className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:from-slate-400 disabled:to-slate-500 text-white font-semibold tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none flex items-center justify-center space-x-3"
+                  className="w-full px-6 py-4 rounded-xl bg-primary-gradient hover:opacity-90 disabled:from-slate-400 disabled:to-slate-500 text-white font-semibold tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none flex items-center justify-center space-x-3"
                 >
                   {isLoading ? (
                     <>
@@ -145,11 +146,12 @@ export function FileConflictDialog({
                 </button>
               </div>
             </div>
+            </div>
             
             {/* New Parallel Analysis */}
-            <div className="group relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 overflow-hidden">
+            <div className="group relative bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl hover:shadow-2xl transition-all duration-300 overflow-hidden flex flex-col">
               {/* Premium Card Header */}
-              <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 dark:from-emerald-700 dark:to-emerald-800 p-6">
+              <div className="bg-green p-6">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
@@ -157,7 +159,7 @@ export function FileConflictDialog({
                     </div>
                     <div>
                       <h3 className="text-lg font-medium text-white tracking-wide">New Analysis</h3>
-                      <p className="text-emerald-100 text-sm font-light">Parallel executive track</p>
+                      <p className="text-white/80 text-sm font-light">Parallel analysis track</p>
                     </div>
                   </div>
                   <div className="w-2 h-8 bg-white/30 rounded-full" />
@@ -165,19 +167,19 @@ export function FileConflictDialog({
               </div>
               
               {/* New Session Configuration */}
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 flex-grow flex flex-col">
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 rounded-xl p-5 border border-slate-200 dark:border-slate-600">
-                  <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-3">New Executive Session</h4>
+                  <h4 className="font-medium text-slate-800 dark:text-slate-200 mb-3">New Session</h4>
                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">{suggestedFilename}</p>
                   
-                  <div className="bg-gradient-to-r from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+                  <div className="bg-gradient-to-r from-green-50 to-green-50 dark:from-green-950/30 dark:to-green-950/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="w-6 h-6 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
                         <Plus className="w-3 h-3 text-white" />
                       </div>
                       <div>
-                        <h5 className="font-medium text-emerald-800 dark:text-emerald-200 mb-1">Intelligent Versioning</h5>
-                        <p className="text-sm text-emerald-700 dark:text-emerald-300 leading-relaxed">
+                        <h5 className="font-medium text-green-800 dark:text-green-200 mb-1">Intelligent Versioning</h5>
+                        <p className="text-sm text-green-700 dark:text-green-300 leading-relaxed">
                           The system will automatically increment the filename to maintain parallel analysis tracks without data conflicts.
                         </p>
                       </div>
@@ -185,10 +187,11 @@ export function FileConflictDialog({
                   </div>
                 </div>
                 
-                <button
+                <div className="mt-auto">
+                  <button
                   onClick={() => onCreateNewSession(suggestedFilename)}
                   disabled={isLoading}
-                  className="w-full px-6 py-4 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 disabled:from-slate-400 disabled:to-slate-500 text-white font-semibold tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none flex items-center justify-center space-x-3"
+                  className="w-full px-6 py-4 rounded-xl bg-green hover:opacity-90 disabled:from-slate-400 disabled:to-slate-500 text-white font-semibold tracking-wide transition-all duration-300 shadow-lg hover:shadow-xl disabled:shadow-none flex items-center justify-center space-x-3"
                 >
                   {isLoading ? (
                     <>
@@ -203,6 +206,7 @@ export function FileConflictDialog({
                   )}
                 </button>
               </div>
+            </div>
             </div>
           </div>
 

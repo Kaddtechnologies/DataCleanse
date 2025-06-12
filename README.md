@@ -131,7 +131,7 @@ The application will be available at: http://localhost:3000
 
 ### Connection Information
 - **Host**: localhost
-- **Port**: 5432
+- **Port**: 5433
 - **Database**: mdm_dedup
 - **Username**: mdm_user
 - **Password**: mdm_password123
