@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-Standard Workflow
+
+## Standard Workflow
 1. First think through the problem, read the codebase for relevant files, and write a plan to projectplan.md.
 2. The plan should have a list of todo items that you can check off as you complete them
 3. Before you begin working, check in with me and I will verify the plan.
@@ -24,6 +25,12 @@ This is a Next.js 15.2.3 application for MDM (Master Data Management) data dedup
 - `npm run build` - Build production version
 - `npm run lint` - Run ESLint
 - `npm run typecheck` - Run TypeScript type checking
+
+### Testing
+- `npm run test:persistence` - Run all persistence tests
+- `npm run test:session` - Run session persistence tests specifically
+- `npm run test:bulk` - Run bulk action tests
+- `npm run test:load` - Run session load tests
 
 ### Database Management
 - `npm run db:setup` - Set up complete database from scratch (PostgreSQL + pgvector)
@@ -123,6 +130,16 @@ Genkit AI functions MUST only run server-side due to Node.js dependencies. The c
 ### AI Analysis Flow
 The AI confidence scoring uses a detailed prompt system with structured output expectations including confidence scores, reasoning, and recommendations for each duplicate pair.
 
+### Smart Rules Engine
+The system includes a comprehensive Smart Rules Engine (`src/ai/rules/smart-duplicate-rules.ts`) that applies business logic before and during AI analysis:
+- **Critical Data Validation**: Applied first to check for missing/invalid names, addresses, etc.
+- **Business Relationship Rules**: Joint ventures, acquisitions, parent/subsidiary detection
+- **Geographic Rules**: Same address analysis, PO Box variations, adjacent locations
+- **Entity Type Rules**: Contact vs customer, freight forwarder detection
+- **Data Quality Rules**: Test data patterns, missing fields, invalid formats
+
+The engine prevents meaningless comparisons (e.g., records with missing names) and provides detailed business justifications for decisions.
+
 ### Data Structure
 Records flow through multiple similarity scoring phases (name, address, city, country, TPI) with enhanced AI analysis that can override or supplement algorithmic scores.
 
@@ -171,4 +188,19 @@ To continue previous work:
 
 ## Development Best Practices
 
-- Always after every task run npm run build and fix any errors that occur. No task is complete until the app build successfully.
+### Build Requirements
+- Always run `npm run build` after every task and fix any errors that occur
+- No task is complete until the app builds successfully
+- Run `npm run typecheck` to catch TypeScript errors early
+
+### Code Quality
+- Use the existing Smart Rules Engine patterns when adding new business logic
+- Follow the server-side only pattern for Genkit AI functions
+- Maintain the executive-grade UI design patterns throughout
+- Test critical data validation scenarios when working with duplicate detection logic
+
+### Architecture Patterns
+- **Server-Side AI**: All Genkit functions must use dynamic requires and server-side checks
+- **Smart Rules First**: Critical data validation rules are applied before business rules
+- **Session Persistence**: All user actions should be saved to PostgreSQL for recovery
+- **Component Consistency**: Follow shadcn/ui and Radix UI patterns for new components
