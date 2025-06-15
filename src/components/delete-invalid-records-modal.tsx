@@ -382,7 +382,7 @@ export function DeleteInvalidRecordsModal({
               className="flex items-center gap-2"
             >
               <Archive className="w-4 h-4" />
-              Invalid Records ({completelyInvalidPairs.length})
+              Invalid Singles ({completelyInvalidPairs.length})
             </Button>
           </div>
         </div>
@@ -402,7 +402,7 @@ export function DeleteInvalidRecordsModal({
                       Invalid Duplicate Pairs
                     </h3>
                     <p className="text-amber-700 dark:text-amber-300 leading-relaxed">
-                      Found <span className="font-semibold">{invalidDuplicatePairs.length} pairs</span> with matching addresses but invalid names. 
+                      Found <span className="font-semibold">{invalidDuplicatePairs.length} pairs</span> where both records have no names but exact address matches. 
                       Review each pair and decide whether to keep as valid or mark as invalid.
                     </p>
                   </div>
@@ -462,11 +462,11 @@ export function DeleteInvalidRecordsModal({
                   </div>
                   <div>
                     <h3 className="text-lg font-medium text-red-800 dark:text-red-200 mb-2">
-                      Completely Invalid Records
+                      Invalid Singles
                     </h3>
                     <p className="text-red-700 dark:text-red-300 leading-relaxed">
                       Found <span className="font-semibold">{individualInvalidRecords.length} individual records</span> from 
-                      <span className="font-semibold"> {completelyInvalidPairs.length} pairs</span> that have both invalid names and addresses.
+                      <span className="font-semibold"> {completelyInvalidPairs.length} data entries</span> that have both invalid names and addresses.
                     </p>
                   </div>
                 </div>
@@ -543,7 +543,7 @@ export function DeleteInvalidRecordsModal({
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4 mr-2" />
-                    Delete {completelyInvalidPairs.length} Invalid Pairs
+                    Delete {completelyInvalidPairs.length} Invalid Singles
                   </>
                 )}
               </Button>

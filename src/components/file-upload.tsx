@@ -73,6 +73,14 @@ interface FileUploadProps {
   onLoadSession?: (sessionId: string) => void;
   onFileReady?: () => void;
   sessionToLoad?: string | null;
+  sessionStats?: {
+    total_pairs: number;
+    pending: number;
+    duplicate: number;
+    not_duplicate: number;
+    skipped: number;
+    auto_merged: number;
+  } | null;
 }
 
 // Processing time estimates per 100 records (in seconds)
@@ -86,7 +94,7 @@ const PROCESSING_TIMES = {
   all_ai: 3.30
 };
 
-export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessionToLoad }: FileUploadProps): JSX.Element {
+export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessionToLoad, sessionStats }: FileUploadProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -252,57 +260,68 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
 
   const handleFileSelection = useCallback(async (selectedFile: File | null) => {
     if (selectedFile) {
-      // Check file size limit (100MB)
-      const maxSizeInBytes = 100 * 1024 * 1024; // 100MB in bytes
-      if (selectedFile.size > maxSizeInBytes) {
-        toast({
-          title: "File Too Large",
-          description: "Please select a file smaller than 100MB.",
-          variant: "destructive"
-        });
-        // Clear the file input
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        return;
-      }
+      // Show loading overlay immediately
+      setShowLoadingOverlay(true);
       
-      // Check for file conflicts before proceeding
       try {
-        const response = await fetch('/api/sessions/check-filename', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ fileName: selectedFile.name }),
-        });
-        
-        if (response.ok) {
-          const conflictData = await response.json();
-          
-          if (conflictData.exists) {
-            // Show conflict dialog
-            setExistingSession(conflictData.existingSession);
-            setSuggestedFilename(conflictData.suggestedFilename);
-            setShowFileConflictDialog(true);
-            setFile(selectedFile); // Store file for later use
-            return; // Don't proceed with normal file processing yet
+        // Check file size limit (100MB)
+        const maxSizeInBytes = 100 * 1024 * 1024; // 100MB in bytes
+        if (selectedFile.size > maxSizeInBytes) {
+          toast({
+            title: "File Too Large",
+            description: "Please select a file smaller than 100MB.",
+            variant: "destructive"
+          });
+          // Clear the file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
           }
+          setShowLoadingOverlay(false);
+          return;
         }
-      } catch (error) {
-        console.error('Error checking for file conflicts:', error);
-        // Continue with normal processing if conflict check fails
-      }
-      
-      // No conflict, proceed with normal file processing
-      setFile(selectedFile);
-      await extractColumnHeaders(selectedFile);
-      await getFileRowCount(selectedFile);
-      toast({ title: "File Selected", description: selectedFile.name });
-      
-      // Notify that file is ready for processing
-      if (onFileReady) {
-        onFileReady();
+        
+        // Check for file conflicts before proceeding
+        try {
+          const response = await fetch('/api/sessions/check-filename', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ fileName: selectedFile.name }),
+          });
+          
+          if (response.ok) {
+            const conflictData = await response.json();
+            
+            if (conflictData.exists) {
+              // Hide loading overlay before showing conflict dialog
+              setShowLoadingOverlay(false);
+              // Show conflict dialog
+              setExistingSession(conflictData.existingSession);
+              setSuggestedFilename(conflictData.suggestedFilename);
+              setShowFileConflictDialog(true);
+              setFile(selectedFile); // Store file for later use
+              return; // Don't proceed with normal file processing yet
+            }
+          }
+        } catch (error) {
+          console.error('Error checking for file conflicts:', error);
+          // Continue with normal processing if conflict check fails
+        }
+        
+        // No conflict, proceed with normal file processing
+        setFile(selectedFile);
+        await extractColumnHeaders(selectedFile);
+        await getFileRowCount(selectedFile);
+        toast({ title: "File Selected", description: selectedFile.name });
+        
+        // Notify that file is ready for processing
+        if (onFileReady) {
+          onFileReady();
+        }
+      } finally {
+        // Hide loading overlay after processing
+        setShowLoadingOverlay(false);
       }
     } else {
       // Clear the file input value to allow re-selecting the same file
@@ -461,6 +480,9 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
 
   // Session loading function to restore file upload state
   const loadSessionState = useCallback(async (sessionId: string) => {
+    // Show loading overlay while loading session
+    setShowLoadingOverlay(true);
+    
     try {
       const response = await fetch(`/api/sessions/${sessionId}/load`);
       if (!response.ok) {
@@ -473,9 +495,20 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
         // Restore session info
         setCurrentSessionId(sessionId);
         
-        // Create a mock file object for the session's file
+        // Create a mock file object for the session's file with correct file size
         const fileName = sessionData.session.file_name;
-        const mockFile = new File([''], fileName, { type: 'text/csv' });
+        const fileSize = sessionData.session.file_size || 0;
+        
+        // Create a mock blob with the correct size for display purposes
+        const mockBlob = new Blob([''], { type: 'text/csv' });
+        const mockFile = new File([mockBlob], fileName, { type: 'text/csv' });
+        
+        // Override the size property to show the correct file size
+        Object.defineProperty(mockFile, 'size', {
+          value: fileSize,
+          writable: false
+        });
+        
         setFile(mockFile);
         
         // Restore blocking configuration from session config
@@ -602,6 +635,9 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
         description: "Failed to restore file upload state from session",
         variant: "destructive"
       });
+    } finally {
+      // Hide loading overlay after session loading completes
+      setShowLoadingOverlay(false);
     }
   }, [setCurrentSessionId, setFile, setBlockingConfig, setColumnHeaders, setColumnMap, setRowCount, setDeduplicationResults, onFileReady, onFileProcessed, toast]);
 
@@ -616,12 +652,19 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
   const handleCreateNewSession = useCallback(async (newFileName: string) => {
     if (file) {
       setShowFileConflictDialog(false);
-      // Update the file name for processing with the new incremented name
-      const newFile = new File([file], newFileName, { type: file.type });
-      setFile(newFile);
-      await extractColumnHeaders(newFile);
-      await getFileRowCount(newFile);
-      toast({ title: "File Selected", description: newFile.name });
+      // Show loading overlay while processing new file
+      setShowLoadingOverlay(true);
+      
+      try {
+        // Update the file name for processing with the new incremented name
+        const newFile = new File([file], newFileName, { type: file.type });
+        setFile(newFile);
+        await extractColumnHeaders(newFile);
+        await getFileRowCount(newFile);
+        toast({ title: "File Selected", description: newFile.name });
+      } finally {
+        setShowLoadingOverlay(false);
+      }
     }
   }, [file, extractColumnHeaders, getFileRowCount, toast]);
 
@@ -761,66 +804,17 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
       return;
     }
 
+    // Calculate and set estimated processing time immediately
+    const estimatedTime = calculateEstimatedTime();
+    setEstimatedProcessingTime(estimatedTime);
+    
+    // Show loading overlay immediately when button is clicked
+    setShowLoadingOverlay(true);
     setIsLoading(true);
     setError(null);
     
     try {
-      // Create database session first
-      const sessionName = `${file.name} - ${new Date().toLocaleString()}`;
-      const processingConfig: Record<string, any> = {
-        use_prefix: blockingConfig.usePrefix,
-        use_metaphone: blockingConfig.useMetaphone,
-        use_soundex: blockingConfig.useSoundex,
-        use_ngram: blockingConfig.useNgram,
-        use_ai: blockingConfig.useAi,
-        name_threshold: blockingConfig.nameThreshold,
-        overall_threshold: blockingConfig.overallThreshold
-      };
-      const sessionId = await createSession(
-        sessionName,
-        file.name,
-        processingConfig
-      );
-
-      if (!sessionId) {
-        throw new Error('Failed to create database session');
-      }
-
-      setCurrentSessionId(sessionId);
-      
-      // Extract and store original file data for row-by-row comparison
-      try {
-        const extractedFileData = await extractOriginalFileData(file);
-        if (extractedFileData && extractedFileData.data.length > 0) {
-          const response = await fetch('/api/sessions/original-data', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              sessionId: sessionId,
-              fileData: extractedFileData.data,
-              headers: extractedFileData.headers
-            })
-          });
-          
-          if (!response.ok) {
-            console.warn('Failed to store original file data:', await response.text());
-          } else {
-            console.log('Successfully stored original file data with headers');
-          }
-        }
-      } catch (error) {
-        console.error('Failed to store original file data:', error);
-        // Don't fail the whole process if we can't store original data
-      }
-      
-      // Calculate and set estimated processing time
-      const estimatedTime = calculateEstimatedTime();
-      setEstimatedProcessingTime(estimatedTime);
-      setShowLoadingOverlay(true);
-      
-      // Process the file and prepare form data
+      // Process the file and prepare form data FIRST (before any database operations)
       const processedFile = await convertCsvToUtf8(file);
       const formData = new FormData();
       formData.append('file', processedFile);
@@ -841,7 +835,7 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
       formData.append('name_threshold', blockingConfig.nameThreshold.toString());
       formData.append('overall_threshold', blockingConfig.overallThreshold.toString());
 
-      // Make API request
+      // Make API request to Python backend FIRST
       const response = await fetch(`${API_BASE_URL}/api/find-duplicates`, {
         method: 'POST',
         body: formData,
@@ -862,7 +856,58 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
         throw new Error(responseData.message || responseData.error);
       }
 
-      // Save duplicate pairs to database if we have a session
+      // Now create database session AFTER successful API response
+      const sessionName = `${file.name} - ${new Date().toLocaleString()}`;
+      const processingConfig: Record<string, any> = {
+        use_prefix: blockingConfig.usePrefix,
+        use_metaphone: blockingConfig.useMetaphone,
+        use_soundex: blockingConfig.useSoundex,
+        use_ngram: blockingConfig.useNgram,
+        use_ai: blockingConfig.useAi,
+        name_threshold: blockingConfig.nameThreshold,
+        overall_threshold: blockingConfig.overallThreshold
+      };
+      
+      const sessionId = await createSession(
+        sessionName,
+        file.name,
+        processingConfig
+      );
+
+      if (!sessionId) {
+        throw new Error('Failed to create database session');
+      }
+
+      setCurrentSessionId(sessionId);
+      
+      // Extract and store original file data for row-by-row comparison (in background)
+      try {
+        const extractedFileData = await extractOriginalFileData(file);
+        if (extractedFileData && extractedFileData.data.length > 0) {
+          const dataResponse = await fetch('/api/sessions/original-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sessionId: sessionId,
+              fileData: extractedFileData.data,
+              headers: extractedFileData.headers
+            })
+          });
+          
+          if (!dataResponse.ok) {
+            console.warn('Failed to store original file data:', await dataResponse.text());
+          } else {
+            console.log('Successfully stored original file data with headers');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to store original file data:', error);
+        // Don't fail the whole process if we can't store original data
+      }
+
+      // Save duplicate pairs to database if we have results
       if (sessionId && responseData.results.duplicates && responseData.results.duplicates.length > 0) {
         console.log('Raw duplicates from backend:', responseData.results.duplicates.slice(0, 2)); // Log first 2 for debugging
         
@@ -1058,7 +1103,7 @@ export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessio
         )}
 
         {deduplicationResults && (
-          <ResultsDisplay results={deduplicationResults} className="mt-4" />
+          <ResultsDisplay results={deduplicationResults} sessionStats={sessionStats} className="mt-4" />
         )}
       </div>
     

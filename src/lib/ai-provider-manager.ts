@@ -3,6 +3,7 @@
  * Handles health checks, validation, and automatic fallback between AI providers
  */
 import Anthropic from "@anthropic-ai/sdk";
+import { environment } from "../../environment";
 
 export interface AIProvider {
   name: string;
@@ -35,26 +36,48 @@ class AIProviderManager {
   private maxRetries: number;
   private timeout: number;
   private healthCheckTimer?: NodeJS.Timeout;
+  private isInitialized: boolean = false;
+  private initializationPromise?: Promise<AIProvider | null>;
 
   constructor(config: AIProviderConfig) {
     this.providers = config.providers.sort((a, b) => a.priority - b.priority);
-    this.healthCheckInterval = config.healthCheckInterval || 60000; // 1 minute
+    this.healthCheckInterval = config.healthCheckInterval || 300000; // 5 minutes instead of 1 minute
     this.maxRetries = config.maxRetries || 3;
-    this.timeout = config.timeout || 5000; // 5 seconds
+    this.timeout = config.timeout || 10000; // 10 seconds instead of 5
   }
 
   /**
    * Initialize the provider manager and run initial health checks
    */
   async initialize(): Promise<AIProvider | null> {
+    // If already initializing, return the existing promise
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    // Create initialization promise
+    this.initializationPromise = this._initialize();
+    return this.initializationPromise;
+  }
+
+  private async _initialize(): Promise<AIProvider | null> {
     console.log('🔍 Initializing AI Provider Manager...');
     
-    // Run initial health checks
-    await this.runHealthChecks();
+    // Run initial health checks in background
+    this.runHealthChecks().catch(err => {
+      console.error('Error during initial health checks:', err);
+    });
     
     // Start periodic health checks
     this.startPeriodicHealthChecks();
     
+    // Set a reasonable provider as default while health checks run
+    if (this.providers.length > 0) {
+      this.currentProvider = this.providers[0];
+      console.log(`🚀 Using ${this.currentProvider.name} as initial provider (health check pending)`);
+    }
+    
+    this.isInitialized = true;
     return this.currentProvider;
   }
 
@@ -64,14 +87,25 @@ class AIProviderManager {
   async runHealthChecks(): Promise<void> {
     console.log('🏥 Running health checks for all AI providers...');
     
-    for (const provider of this.providers) {
+    // Run all health checks in parallel
+    const healthCheckPromises = this.providers.map(async (provider) => {
       const isHealthy = await this.checkProviderHealth(provider);
       provider.isHealthy = isHealthy;
       provider.lastChecked = new Date();
-      
-      if (isHealthy && !this.currentProvider) {
-        this.currentProvider = provider;
-        console.log(`✅ Selected ${provider.name} as primary AI provider`);
+      return { provider, isHealthy };
+    });
+
+    // Wait for all health checks to complete with a timeout
+    const results = await Promise.allSettled(healthCheckPromises);
+    
+    // Process results
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        const { provider, isHealthy } = result.value;
+        if (isHealthy && !this.currentProvider) {
+          this.currentProvider = provider;
+          console.log(`✅ Selected ${provider.name} as primary AI provider`);
+        }
       }
     }
 
@@ -88,6 +122,15 @@ class AIProviderManager {
   private async checkProviderHealth(provider: AIProvider): Promise<boolean> {
     try {
       console.log(`🔍 Checking health of ${provider.name}...`);
+      
+      // If provider was recently checked and marked healthy, skip the check
+      if (provider.isHealthy && provider.lastChecked) {
+        const timeSinceLastCheck = Date.now() - provider.lastChecked.getTime();
+        if (timeSinceLastCheck < 60000) { // 1 minute grace period
+          console.log(`✅ ${provider.name} recently checked and healthy, skipping`);
+          return true;
+        }
+      }
       
       switch (provider.type) {
         case 'azure_openai':
@@ -130,6 +173,15 @@ class AIProviderManager {
         console.log(`✅ ${provider.name} is healthy`);
         provider.errorCount = 0;
         return true;
+      }
+
+      // Don't fail immediately on 4xx errors - they might be temporary
+      if (response.status >= 400 && response.status < 500) {
+        console.log(`⚠️ ${provider.name} returned ${response.status}, treating as temporarily unhealthy`);
+        provider.errorCount = (provider.errorCount || 0) + 1;
+        
+        // Only mark as unhealthy after multiple failures
+        return provider.errorCount < 3;
       }
 
       console.log(`❌ ${provider.name} returned status: ${response.status}`);
@@ -211,9 +263,9 @@ class AIProviderManager {
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
       const anthropic = new Anthropic();
-
+      anthropic.apiKey = environment.anthropicApiKey;
       const msg = await anthropic.messages.create({
-        model: "claude-opus-4-20250514",
+        model: "claude-3-5-haiku-latest",
         max_tokens: 1000,
         temperature: 1,
         system: "Respond only with short poems.",
@@ -296,6 +348,28 @@ class AIProviderManager {
    */
   getProviderStatus(): AIProvider[] {
     return this.providers;
+  }
+
+  /**
+   * Mark a provider as temporarily failed (used when API calls fail)
+   */
+  markProviderTemporarilyFailed(providerName: string): void {
+    const provider = this.providers.find(p => p.name === providerName);
+    if (provider) {
+      provider.errorCount = (provider.errorCount || 0) + 1;
+      provider.lastChecked = new Date();
+      
+      // Mark as unhealthy if too many errors
+      if (provider.errorCount >= 3) {
+        provider.isHealthy = false;
+        console.log(`❌ ${providerName} marked as unhealthy due to repeated failures`);
+        
+        // Switch to next available provider if this was the current one
+        if (this.currentProvider?.name === providerName) {
+          this.selectHealthyProvider();
+        }
+      }
+    }
   }
 
   /**

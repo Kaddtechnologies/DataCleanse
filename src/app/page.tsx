@@ -8,6 +8,9 @@ import { InteractiveDataGrid } from '@/components/interactive-data-grid';
 import { CardReviewModal } from '@/components/card-review-modal';
 import { DataExportActions } from '@/components/data-export-actions';
 import { useToast } from "@/hooks/use-toast";
+import { useSessionStats } from "@/hooks/use-session-stats";
+import { useSessionPersistence } from "@/hooks/use-session-persistence";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Loader2, CheckCircle, AlertTriangle, FileText, Trash2 } from 'lucide-react';
 import { categorizeInvalidPairs, checkPairForInvalidNames } from '@/utils/record-validation';
 import { DeleteInvalidRecordsModal } from '@/components/delete-invalid-records-modal';
@@ -37,6 +40,7 @@ const transformRecordForAI = (record: CustomerRecord): Record<string, string> =>
 };
 
 export default function HomePage() {
+const isMobile = useIsMobile();
   const [duplicateData, setDuplicateData] = useState<DuplicatePair[]>([]);
   const [selectedPairForReview, setSelectedPairForReview] = useState<DuplicatePair | null>(null);
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -57,6 +61,12 @@ export default function HomePage() {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [sessionToLoadInFileUpload, setSessionToLoadInFileUpload] = useState<string | null>(null);
   const [refreshStatsCounter, setRefreshStatsCounter] = useState(0);
+  
+  // Real-time session statistics
+  const { stats: sessionStats, refreshStats } = useSessionStats(currentSessionId);
+  
+  // Session persistence
+  const { updateSessionMetadata, updateDuplicatePair } = useSessionPersistence();
   
   // Invalid records state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -201,10 +211,9 @@ export default function HomePage() {
         completelyInvalid: completelyInvalidPairs.length
       });
 
-      // Set the data - include both valid pairs and invalid name + valid address pairs in main grid
-      // Valid pairs are eligible for merge operations, invalid name + valid address pairs need user review
-      const gridData = [...validPairs, ...invalidNameValidAddressPairs];
-      setDuplicateData(gridData);
+      // Set the data - ONLY include valid pairs in main grid
+      // Invalid records should only be manipulated from the invalid records modal
+      setDuplicateData(validPairs);
       setInvalidRecordPairs(completelyInvalidPairs); // Only completely invalid pairs for batch delete
       
       // Update summary message
@@ -279,6 +288,12 @@ export default function HomePage() {
     );
     setSelectedPairForReview(null);
     updateLastSaved(); // Track save activity
+    
+    // Refresh real-time session statistics
+    if (refreshStats) {
+      refreshStats();
+    }
+    
     toast({ title: "Pair Resolved", description: `Record pair ${recordName} marked as ${resolution.replace('_', ' ')}.`, variant: "default" });
   };
 
@@ -360,13 +375,30 @@ export default function HomePage() {
     let updatedData = [...duplicateData];
     let mergeCount = 0;
 
-    // Process each pair
+    // Process each pair and update in database
     for (const pair of pairsToMerge) {
       const pairIndex = updatedData.findIndex(p => p.id === pair.id);
       if (pairIndex !== -1) {
         updatedData[pairIndex] = { ...updatedData[pairIndex], status: 'merged' };
         mergeCount++;
+        
+        // Update pair status in database
+        if (pair.id && currentSessionId) {
+          await updateDuplicatePair(pair.id, { status: 'merged' });
+        }
       }
+    }
+
+    // Update session metadata
+    if (currentSessionId) {
+      await updateSessionMetadata(currentSessionId, {
+        quick_actions: {
+          bulk_merge_performed: true,
+          bulk_merge_count: mergeCount,
+          bulk_merge_timestamp: new Date().toISOString(),
+          total_bulk_merges: (sessionMetadata?.quick_actions?.total_bulk_merges || 0) + mergeCount
+        }
+      });
     }
 
     // Update state
@@ -374,6 +406,9 @@ export default function HomePage() {
     setIsBulkMerging(false);
     setPairsToMerge([]);
     setHasBulkMergedThisSession(true); // Mark that bulk merge has been performed
+    
+    // Refresh session stats
+    refreshStats();
     
     toast({
       title: "Bulk Merge Complete",
@@ -503,48 +538,99 @@ export default function HomePage() {
     setIsLoadingData(true); // Show loading indicator
     setLoadingType('loading_session');
     try {
-      // Load session data from database
-      const response = await fetch(`/api/sessions/${sessionId}/load`);
-      if (!response.ok) {
+      console.log(`Starting to load session ${sessionId}`);
+      
+      // First, load session metadata and statistics quickly (no duplicate pairs)
+      const sessionResponse = await fetch(`/api/sessions/${sessionId}/load`);
+      if (!sessionResponse.ok) {
         throw new Error('Failed to load session');
       }
       
-      const sessionData = await response.json();
+      const sessionData = await sessionResponse.json();
+      console.log(`Session metadata loaded for ${sessionId}:`, sessionData);
       
-      // Update state with loaded session data using correct API response format
-      if (sessionData.success && sessionData.duplicate_pairs) {
-        // Restore data grid state
-        setDuplicateData(sessionData.duplicate_pairs);
-        setCurrentSessionId(sessionId);
-        setSessionMetadata(sessionData.session || {});
-        setSessionStatus('active');
-        setLastSaved(new Date()); // Set last saved to now since we just loaded
+      if (!sessionData.success) {
+        throw new Error(sessionData.error || 'Failed to load session');
+      }
+      
+      // Set session metadata first
+      setCurrentSessionId(sessionId);
+      setSessionMetadata(sessionData.session?.metadata || {});
+      setSessionStatus('active');
+      setLastSaved(new Date()); // Set last saved to now since we just loaded
+      
+      // Trigger file upload component to restore its state
+      setSessionToLoadInFileUpload(sessionId);
+      
+      // Clear the session loading trigger after a brief delay
+      setTimeout(() => {
+        setSessionToLoadInFileUpload(null);
+      }, 100);
+      
+      // Now load first page of duplicate pairs if they exist
+      if (sessionData.statistics?.total_pairs > 0) {
+        console.log(`Loading first page of duplicate pairs for session ${sessionId}`);
+        const pairsResponse = await fetch(`/api/sessions/${sessionId}/pairs?page=1&limit=50`);
         
-        // Check if bulk merge was already performed by looking for merged records
-        const hasMergedRecords = sessionData.duplicate_pairs.some((pair: any) => pair.status === 'merged');
-        setHasBulkMergedThisSession(hasMergedRecords);
-        
-        // Trigger file upload component to restore its state
-        setSessionToLoadInFileUpload(sessionId);
-        
-        // Clear the session loading trigger after a brief delay to allow the file upload component to process it
-        setTimeout(() => {
-          setSessionToLoadInFileUpload(null);
-        }, 100);
+        if (pairsResponse.ok) {
+          const pairsData = await pairsResponse.json();
+          
+          if (pairsData.success && pairsData.duplicate_pairs) {
+            setDuplicateData(pairsData.duplicate_pairs);
+            
+            // Restore UI state from metadata
+            const metadata = sessionData.session?.metadata || {};
+            
+            // Check if bulk merge was performed
+            const hasBulkMergeFlag = metadata.quick_actions?.bulk_merge_performed || false;
+            const hasMergedRecords = pairsData.duplicate_pairs.some((pair: any) => pair.status === 'merged');
+            setHasBulkMergedThisSession(hasBulkMergeFlag || hasMergedRecords);
+            
+            // Check for invalid records that weren't deleted
+            if (metadata.invalid_records && !metadata.invalid_records.deleted) {
+              const invalidPairs = pairsData.duplicate_pairs.filter((pair: DuplicatePair) => {
+                return checkPairForInvalidNames(pair);
+              });
+              setInvalidRecordPairs(invalidPairs);
+            }
+            
+            console.log(`Loaded ${pairsData.duplicate_pairs.length} pairs for session ${sessionId}`);
+          }
+        }
+      } else {
+        // No duplicate pairs to load
+        setDuplicateData([]);
+        setHasBulkMergedThisSession(false);
+        setInvalidRecordPairs([]);
+      }
+      
+      // Use statistics from the session load for progress calculation
+      const statistics = sessionData.statistics || {};
+      const progressPercentage = statistics.total_pairs > 0 
+        ? Math.round(((statistics.total_pairs - statistics.pending) / statistics.total_pairs) * 100)
+          : 0;
         
         toast({
           title: "Session Loaded",
-          description: `Loaded "${sessionData.session.session_name}" with ${sessionData.duplicate_pairs.length} duplicate pairs.`,
+          description: `Loaded "${sessionData.session.session_name}" with ${statistics.total_pairs || 0} total pairs (${progressPercentage}% complete).`,
           variant: "default"
         });
-      } else {
-        throw new Error('Invalid session data format');
-      }
+        
+      console.log(`Session ${sessionId} loaded successfully`);
+        
     } catch (error) {
       console.error('Error loading session:', error);
+      // Reset states on error
+      setCurrentSessionId(null);
+      setSessionStatus('none');
+      setDuplicateData([]);
+      setSessionMetadata(null);
+      setHasBulkMergedThisSession(false);
+      setInvalidRecordPairs([]);
+      
       toast({
         title: "Error",
-        description: "Failed to load session. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to load session. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -555,6 +641,31 @@ export default function HomePage() {
   const handleDeleteInvalidRecords = async (pairIds: string[]) => {
     try {
       const deletedCount = pairIds.length;
+      
+      // Delete pairs from database
+      if (currentSessionId && pairIds.length > 0) {
+        const response = await fetch('/api/duplicate-pairs/delete-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pairIds })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to delete pairs from database');
+        }
+      }
+      
+      // Update session metadata
+      if (currentSessionId) {
+        await updateSessionMetadata(currentSessionId, {
+          invalid_records: {
+            deleted: true,
+            deleted_count: deletedCount,
+            deleted_timestamp: new Date().toISOString(),
+            deleted_pair_ids: pairIds
+          }
+        });
+      }
       
       // Remove the invalid pairs from the data
       setDuplicateData(prevData => 
@@ -567,6 +678,9 @@ export default function HomePage() {
         pairIds.forEach(id => newSelected.delete(id));
         return newSelected;
       });
+      
+      // Refresh session stats
+      refreshStats();
       
       // Show success toast
       toast({
@@ -589,6 +703,10 @@ export default function HomePage() {
   // Session stats refresh handler
   const handleSessionStatsChanged = () => {
     setRefreshStatsCounter(prev => prev + 1);
+    // Trigger real-time session statistics refresh
+    if (refreshStats) {
+      refreshStats();
+    }
   };
 
   return (
@@ -608,6 +726,7 @@ export default function HomePage() {
             onLoadSession={handleLoadSession}
             onFileReady={handleFileReady}
             sessionToLoad={sessionToLoadInFileUpload}
+            sessionStats={sessionStats}
           />
         </section>
 
@@ -641,6 +760,36 @@ export default function HomePage() {
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Real-time Session Statistics (mobile only) */}
+                {isMobile && sessionStats && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 rounded-lg border">
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{sessionStats.total_pairs}</div>
+                      <div className="text-xs text-muted-foreground">Total Pairs</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{sessionStats.pending}</div>
+                      <div className="text-xs text-muted-foreground">Awaiting Review</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-red-600 dark:text-red-400">{sessionStats.duplicate}</div>
+                      <div className="text-xs text-muted-foreground">Confirmed Duplicates</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">{sessionStats.not_duplicate}</div>
+                      <div className="text-xs text-muted-foreground">Confirmed Unique</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">{sessionStats.skipped}</div>
+                      <div className="text-xs text-muted-foreground">Skipped/Deferred</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{sessionStats.auto_merged}</div>
+                      <div className="text-xs text-muted-foreground">Auto-Merged</div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Merge Section */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border">
                   <div className="flex-1">
@@ -711,7 +860,7 @@ export default function HomePage() {
                 </div>
 
                 {/* Invalid Records Section */}
-                {invalidPairs.length > 0 && (
+                {(invalidNameValidAddressPairs.length > 0 || completelyInvalidPairs.length > 0) && (
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-1">
@@ -719,7 +868,7 @@ export default function HomePage() {
                         <h3 className="font-medium text-sm text-red-800 dark:text-red-200">Invalid Records Detected</h3>
                       </div>
                       <p className="text-xs text-red-700 dark:text-red-300">
-                        Found {statistics.totalInvalidNameValidAddress} pairs needing user review and {statistics.totalCompletelyInvalid} completely invalid pairs affecting {statistics.totalRecordsAffected} total records.
+                        Found {invalidNameValidAddressPairs.length} pairs needing user review and {completelyInvalidPairs.length} invalid singles affecting {statistics.totalRecordsAffected} total records.
                       </p>
                     </div>
                     <Button
@@ -737,7 +886,7 @@ export default function HomePage() {
                       ) : (
                         <>
                           <Trash2 className="mr-2 h-4 w-4" />
-                          Clean Up Invalid Records
+                          Clean Up Invalid Data
                         </>
                       )}
                     </Button>
@@ -806,7 +955,7 @@ export default function HomePage() {
           isOpen={showDeleteModal}
           onClose={() => setShowDeleteModal(false)}
           onConfirmDelete={handleDeleteInvalidRecordsFromModal}
-          invalidPairs={invalidPairs}
+          invalidPairs={[...invalidNameValidAddressPairs, ...completelyInvalidPairs]}
           isDeleting={isDeleting}
         />
       )}

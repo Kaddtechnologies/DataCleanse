@@ -394,7 +394,7 @@ npm run db:setup
 4. **Environment Configuration**
 Create `.env.local`:
 ```env
-DATABASE_URL=postgresql://mdm_user:mdm_password123@localhost:5432/mdm_dedup
+DATABASE_URL=postgresql://mdm_user:mdm_password123@localhost:5433/mdm_dedup
 OPENAI_API_KEY=your_azure_openai_api_key
 NODE_ENV=development
 ```
@@ -416,7 +416,7 @@ services:
       POSTGRES_PASSWORD: mdm_password123
       POSTGRES_DB: mdm_dedup
     ports:
-      - "5432:5432"
+      - "5433:5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql

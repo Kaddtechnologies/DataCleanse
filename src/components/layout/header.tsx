@@ -63,17 +63,22 @@ export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, las
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   const [loadingSession, setLoadingSession] = useState(false);
   const [showSessionManager, setShowSessionManager] = useState(false);
-  const [checkingSessions, setCheckingSessions] = useState(true);
+  // Only true while an explicit check is running
+  const [checkingSessions, setCheckingSessions] = useState(false);
 
-  // Check if there are available sessions when component mounts and periodically
+  /**
+   * Re-check for available sessions only when explicitly requested:
+   *  • Parent bumps `refreshStatsCounter` after a session save.
+   *  • Additional manual triggers can increment this counter as needed.
+   * The empty dependency list + interval that previously caused polling
+   * has been removed to stop background traffic.
+   */
   useEffect(() => {
-    checkForAvailableSessions();
-    
-    // Set up periodic checking every 30 seconds
-    const interval = setInterval(checkForAvailableSessions, 30000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    if (refreshStatsCounter !== undefined) {
+      checkForAvailableSessions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshStatsCounter]);
 
   const checkForAvailableSessions = async () => {
     try {

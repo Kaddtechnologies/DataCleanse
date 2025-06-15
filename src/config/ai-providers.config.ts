@@ -13,9 +13,9 @@ export const aiProviderConfig: AIProviderConfig = {
       type: 'azure_openai',
       config: {
         apiKey: environment.azureOpenAiApiKey || '6kEA8jhAvaSiqoIDVUXygVWyLEKsmSUY0zIBOqsNeN2g0O6QWtWuJQQJ99BDACHYHv6XJ3w3AAABACOGTeiK',
-        endpoint: environment.azureOpenAiEndpoint || 'https://dev-openai-35t-16k.openai.azure.com/openai/deployments/dai-gpt-4.1-nano',
-        apiVersion: environment.openAiApiVersion || '2025-01-01-preview',
-        deployment: environment.azureOpenAiDeploymentName || 'dai-gpt-4.1-nano'
+        endpoint: environment.azureOpenAiEndpoint || 'https://dev-openai-35t-16k.openai.azure.com',
+        apiVersion: environment.openAiApiVersion || '2024-05-13',
+        deployment: environment.azureOpenAiDeploymentName || 'dai-gpt-4-1-nano'
       }
     },
     {

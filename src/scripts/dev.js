@@ -71,12 +71,14 @@ function openBrowser(url) {
 
   console.log(`➡  Starting Next.js on ${url}`);
 
-  // Start Next.js development server
-  const nextProcess = spawn(
-    'npx',
-    ['next', 'dev', '-p', String(port)],
-    { stdio: 'inherit', shell: true }
-  );
+    // Start Next.js development server
+    // Invoke the local Next.js CLI directly to avoid the npm / npx lookup delay.
+    const nextExecutable = process.platform === 'win32' ? 'next.cmd' : 'next';
+    const nextProcess = spawn(
+      nextExecutable,
+      ['dev', '-p', String(port)],
+      { stdio: 'inherit', shell: true }
+    );
 
   // Give Next.js some time to compile before opening the browser
   setTimeout(() => openBrowser(url), 5_000);

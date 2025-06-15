@@ -1,6 +1,11 @@
 import * as React from "react"
 
-const MOBILE_BREAKPOINT = 768
+/**
+ * Mobile breakpoint changed to 1023 px so “desktop” is ≥ 1024 px.
+ * Components that rely on this hook (e.g. ResultsDisplay) now treat
+ * tablets and smaller as mobile.
+ */
+const MOBILE_BREAKPOINT = 1024
 
 export function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)

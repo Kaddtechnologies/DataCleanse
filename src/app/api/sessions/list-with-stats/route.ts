@@ -37,14 +37,14 @@ export async function GET(request: NextRequest) {
       const result = await client.query(query, [limit]);
       
       // Debug logging
-      console.log('Raw session data from DB:', result.rows.map(row => ({
-        id: row.id,
-        session_name: row.session_name,
-        total_pairs: row.total_pairs,
-        processed_pairs: row.processed_pairs,
-        actual_processed_pairs: row.actual_processed_pairs,
-        total_duplicate_pairs: row.total_duplicate_pairs
-      })));
+      // console.log('Raw session data from DB:', result.rows.map(row => ({
+      //   id: row.id,
+      //   session_name: row.session_name,
+      //   total_pairs: row.total_pairs,
+      //   processed_pairs: row.processed_pairs,
+      //   actual_processed_pairs: row.actual_processed_pairs,
+      //   total_duplicate_pairs: row.total_duplicate_pairs
+      // })));
       
       const sessions = result.rows.map(row => {
         // Use the calculated duplicate pairs count, but fall back to stored total_pairs if needed

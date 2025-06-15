@@ -76,17 +76,22 @@ export function useSessionPersistence() {
     }
   }, []);
 
-  // Load an existing session
-  const loadSession = useCallback(async (sessionId: string): Promise<{
+  // Load an existing session (fast - no duplicate pairs by default)
+  const loadSession = useCallback(async (sessionId: string, includePairs: boolean = false): Promise<{
     session: SessionData;
-    duplicate_pairs: DuplicatePair[];
+    duplicate_pairs?: DuplicatePair[];
     configuration: Record<string, any>;
     statistics: Record<string, number>;
   } | null> => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      const response = await fetch(`/api/sessions/${sessionId}/load`);
+      const url = includePairs 
+        ? `/api/sessions/${sessionId}/load?includePairs=true`
+        : `/api/sessions/${sessionId}/load`;
+      
+      console.log(`Loading session ${sessionId}, includePairs: ${includePairs}`);
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`Failed to load session: ${response.statusText}`);
@@ -99,12 +104,21 @@ export function useSessionPersistence() {
           currentSession: data.session,
           isLoading: false
         }));
-        return {
+        
+        const result = {
           session: data.session,
-          duplicate_pairs: data.duplicate_pairs,
           configuration: data.configuration,
           statistics: data.statistics
         };
+        
+        if (includePairs && data.duplicate_pairs) {
+          return {
+            ...result,
+            duplicate_pairs: data.duplicate_pairs
+          };
+        }
+        
+        return result;
       } else {
         throw new Error(data.error || 'Unknown error loading session');
       }
@@ -113,6 +127,60 @@ export function useSessionPersistence() {
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to load session',
         isLoading: false
+      }));
+      return null;
+    }
+  }, []);
+
+  // Load duplicate pairs for a session with pagination
+  const loadDuplicatePairs = useCallback(async (
+    sessionId: string,
+    page: number = 1,
+    limit: number = 20,
+    status?: string
+  ): Promise<{
+    duplicate_pairs: DuplicatePair[];
+    pagination: {
+      page: number;
+      limit: number;
+      totalCount: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPreviousPage: boolean;
+      startIndex: number;
+      endIndex: number;
+    };
+  } | null> => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString()
+      });
+      
+      if (status && status !== 'all') {
+        params.append('status', status);
+      }
+      
+      const response = await fetch(`/api/sessions/${sessionId}/pairs?${params.toString()}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load duplicate pairs: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.success) {
+        return {
+          duplicate_pairs: data.duplicate_pairs,
+          pagination: data.pagination
+        };
+      } else {
+        throw new Error(data.error || 'Unknown error loading duplicate pairs');
+      }
+    } catch (error) {
+      console.error('Error loading duplicate pairs:', error);
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to load duplicate pairs'
       }));
       return null;
     }
@@ -250,6 +318,45 @@ export function useSessionPersistence() {
     }
   }, []);
 
+  // Update session metadata
+  const updateSessionMetadata = useCallback(async (
+    sessionId: string,
+    metadataUpdates: Record<string, any>
+  ): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/metadata`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ metadata: metadataUpdates })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to update session metadata: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // Update local state if this is the current session
+      if (state.currentSession?.id === sessionId) {
+        setState(prev => ({
+          ...prev,
+          currentSession: {
+            ...prev.currentSession!,
+            metadata: {
+              ...prev.currentSession!.metadata,
+              ...metadataUpdates
+            }
+          }
+        }));
+      }
+      
+      return data.success;
+    } catch (error) {
+      console.error('Error updating session metadata:', error);
+      return false;
+    }
+  }, [state.currentSession]);
+
   return {
     // State
     currentSession: state.currentSession,
@@ -260,10 +367,12 @@ export function useSessionPersistence() {
     // Actions
     createSession,
     loadSession,
+    loadDuplicatePairs,
     saveDuplicatePairs,
     updateDuplicatePair,
     listSessions,
     clearSession,
-    checkHealth
+    checkHealth,
+    updateSessionMetadata
   };
 }

@@ -25,7 +25,15 @@
       "Bash(sed:*)",
       "Bash(sudo usermod:*)",
       "Bash(rm:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(docker exec:*)",
+      "Bash(npm run test:persistence:*)",
+      "Bash(npm install:*)",
+      "Bash(ss:*)",
+      "Bash(pkill:*)",
+      "Bash(true)",
+      "Bash(npm run lint)",
+      "Bash(timeout 60 npm run build)"
     ]
   },
   "enableAllProjectMcpServers": false

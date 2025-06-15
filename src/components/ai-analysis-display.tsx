@@ -466,18 +466,23 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
     }
   }
   
-  const confidenceColor = displayConfidenceLevel.toLowerCase() === 'high' ? 'bg-green-500' : 
+  // Check for critical validation issues
+  const hasCriticalIssues = smartAnalysis?.appliedRules?.some(rule => rule.ruleType === 'critical_validation');
+  
+  const confidenceColor = hasCriticalIssues ? 'bg-red-600' :
+                         displayConfidenceLevel.toLowerCase() === 'high' ? 'bg-green-500' : 
                          displayConfidenceLevel.toLowerCase() === 'medium' ? 'bg-yellow-500' : 'bg-red-500';
   
   return (
     <Card className="bg-gradient-to-br from-secondary/20 to-primary/5 border-secondary/50 shadow-inner">
       <CardHeader>
         <CardTitle className="text-lg flex items-center">
-          {displayConfidenceLevel.toLowerCase() === 'high' && <CheckCircle className="w-5 h-5 mr-2 text-green-600" />}
-          {displayConfidenceLevel.toLowerCase() === 'medium' && <AlertTriangle className="w-5 h-5 mr-2 text-yellow-600" />}
-          {displayConfidenceLevel.toLowerCase() === 'low' && <XCircle className="w-5 h-5 mr-2 text-red-600" />}
+          {hasCriticalIssues && <AlertTriangle className="w-5 h-5 mr-2 text-red-600" />}
+          {!hasCriticalIssues && displayConfidenceLevel.toLowerCase() === 'high' && <CheckCircle className="w-5 h-5 mr-2 text-green-600" />}
+          {!hasCriticalIssues && displayConfidenceLevel.toLowerCase() === 'medium' && <AlertTriangle className="w-5 h-5 mr-2 text-yellow-600" />}
+          {!hasCriticalIssues && displayConfidenceLevel.toLowerCase() === 'low' && <XCircle className="w-5 h-5 mr-2 text-red-600" />}
           <Brain className="w-5 h-5 mr-2 text-primary" />
-          Enhanced AI Analysis
+          {hasCriticalIssues ? 'Critical Data Issues Detected' : 'Enhanced AI Analysis'}
         </CardTitle>
         <CardDescription>
           <div className="flex items-center gap-3 mt-1 flex-wrap">
@@ -487,8 +492,11 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
                 className={`${confidenceColor} text-white font-medium px-3 py-0.5`}
                 variant="secondary"
               >
-                {displayConfidenceLevel} ({(displayConfidenceScore).toFixed(0)}%)
+                {hasCriticalIssues ? `INVALID (${displayConfidenceScore}%)` : `${displayConfidenceLevel} (${displayConfidenceScore.toFixed(0)}%)`}
               </Badge>
+              {hasCriticalIssues && (
+                <span className="text-xs text-red-600 font-medium">Data cleanup required</span>
+              )}
             </div>
             
             {smartAnalysis && (
@@ -515,6 +523,39 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
       
       <CardContent>
         <div className="space-y-4">
+          {/* CRITICAL DATA VALIDATION WARNING - Show first if we have critical issues */}
+          {smartAnalysis && smartAnalysis.appliedRules && smartAnalysis.appliedRules.some(rule => rule.ruleType === 'critical_validation') && (
+            <div className="bg-red-50 dark:bg-red-950/20 p-4 rounded-lg border border-red-500/50 shadow-md">
+              <h3 className="text-sm font-semibold flex items-center mb-3 text-red-700 dark:text-red-300">
+                <AlertTriangle className="w-5 h-5 mr-2 text-red-600" />
+                🚨 Critical Data Validation Issues
+              </h3>
+              <div className="space-y-2">
+                {smartAnalysis.appliedRules
+                  .filter(rule => rule.ruleType === 'critical_validation')
+                  .map((rule, index) => (
+                    <div key={index} className="text-sm">
+                      <p className="font-medium text-red-800 dark:text-red-200 mb-1">
+                        {rule.ruleName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      </p>
+                      <p className="text-red-700 dark:text-red-300 mb-2">
+                        {rule.reasoning}
+                      </p>
+                      {rule.businessJustification && (
+                        <p className="text-xs text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/30 p-2 rounded">
+                          <strong>Impact:</strong> {rule.businessJustification}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                }
+                <div className="mt-3 p-2 bg-amber-100 dark:bg-amber-900/30 rounded text-xs text-amber-800 dark:text-amber-200">
+                  <strong>⚠️ Data Steward Action Required:</strong> These records require data cleanup before meaningful duplicate detection can be performed. The comparison score has been set to reflect the inability to make a reliable assessment.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* PRIMARY RECOMMENDATION - Most Important */}
           <div className="bg-primary/10 p-4 rounded-lg border border-primary/20">
             <h3 className="text-sm font-semibold flex items-center mb-3">
@@ -658,16 +699,24 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
                         <p className="mb-2"><strong>Score Enhanced:</strong> {originalScore.toFixed(1)}% → {enhancedScore}% 
                           <span className="text-green-600 font-semibold"> (+{scoreDifference.toFixed(1)} points)</span>
                         </p>
-                        <p className="mb-2">Our smart business rules identified factors that increase confidence in this match:</p>
+                        <p className="mb-2">Applied business rules and their positive impact:</p>
                         <ul className="list-disc list-inside space-y-1">
-                          {smartAnalysis.appliedRules
-                            .filter(rule => rule.confidenceScore > 50)
-                            .map((rule, index) => (
+                          {smartAnalysis.appliedRules.length > 0 ? (
+                            smartAnalysis.appliedRules.map((rule, index) => (
                               <li key={index} className="text-xs">
                                 <strong>{rule.ruleName.replace(/_/g, ' ')}</strong>: {rule.reasoning}
+                                {rule.confidenceScore && (
+                                  <span className="ml-2 text-muted-foreground">
+                                    (Rule confidence: {rule.confidenceScore}%)
+                                  </span>
+                                )}
                               </li>
                             ))
-                          }
+                          ) : (
+                            <li className="text-xs text-muted-foreground">
+                              Score enhancement applied due to smart business rules analysis, but specific rule details are not available.
+                            </li>
+                          )}
                         </ul>
                       </div>
                     );
@@ -677,17 +726,30 @@ export function AiAnalysisDisplay({ record1, record2, fuzzyScore, analyzeFunctio
                         <p className="mb-2"><strong>Score Adjusted Down:</strong> {originalScore.toFixed(1)}% → {enhancedScore}% 
                           <span className="text-red-600 font-semibold"> ({scoreDifference.toFixed(1)} points)</span>
                         </p>
-                        <p className="mb-2">Our smart business rules identified factors that reduce confidence in this match:</p>
+                        <p className="mb-2">Applied business rules and their impact:</p>
                         <ul className="list-disc list-inside space-y-1">
-                          {smartAnalysis.appliedRules
-                            .filter(rule => rule.confidenceScore < 50)
-                            .map((rule, index) => (
+                          {smartAnalysis.appliedRules.length > 0 ? (
+                            smartAnalysis.appliedRules.map((rule, index) => (
                               <li key={index} className="text-xs">
                                 <strong>{rule.ruleName.replace(/_/g, ' ')}</strong>: {rule.reasoning}
+                                {rule.confidenceScore && (
+                                  <span className="ml-2 text-muted-foreground">
+                                    (Rule confidence: {rule.confidenceScore}%)
+                                  </span>
+                                )}
                               </li>
                             ))
-                          }
+                          ) : (
+                            <li className="text-xs text-muted-foreground">
+                              Score reduction applied due to smart business rules analysis, but specific rule details are not available.
+                            </li>
+                          )}
                         </ul>
+                        {smartAnalysis.appliedRules.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            <em>Note: Despite positive individual rules, the overall score may be adjusted down due to weighted analysis, data quality factors, or business rule interactions.</em>
+                          </p>
+                        )}
                       </div>
                     );
                   }

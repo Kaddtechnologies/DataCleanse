@@ -9,6 +9,27 @@ import { z } from 'zod';
 import { SmartDuplicateRulesEngine, type SmartAnalysisResult } from '@/ai/types';
 import Anthropic from "@anthropic-ai/sdk";
 
+// Helper function to add timeout to fetch requests
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    return response;
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`Request timeout after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
+}
+
 // Define the output schema
 const AnalyzeDuplicateConfidenceOutputSchema = z.object({
   confidenceLevel: z.string(),
@@ -44,8 +65,12 @@ async function ensureProviderManagerInitialized() {
 export async function analyzeWithFallback(
   record1: Record<string, string>,
   record2: Record<string, string>,
-  fuzzyScore: number
+  fuzzyScore: number,
+  maxRetries: number = 2
 ): Promise<AnalyzeDuplicateConfidenceOutput> {
+  if (maxRetries <= 0) {
+    throw new Error('Maximum retry attempts exceeded for AI analysis');
+  }
   // Ensure provider manager is initialized
   await ensureProviderManagerInitialized();
   
@@ -58,35 +83,36 @@ export async function analyzeWithFallback(
 
   console.log(`🤖 Using AI Provider: ${currentProvider.name}`);
 
-  try {
-    // Filter out TPI numbers and other unique identifiers
-    const filterRecord = (record: Record<string, string>): Record<string, string> => {
-      const filtered: Record<string, string> = {};
-      for (const [key, value] of Object.entries(record)) {
-        if (key.toLowerCase().includes('tpi') || 
-            key.toLowerCase().includes('id') ||
-            key.toLowerCase().includes('uid') ||
-            key.toLowerCase().includes('rowNumber')) {
-          if (record1[key] === record2[key]) {
-            filtered[key] = value;
-          }
-        } else {
+  // Filter out TPI numbers and other unique identifiers
+  const filterRecord = (record: Record<string, string>): Record<string, string> => {
+    const filtered: Record<string, string> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (key.toLowerCase().includes('tpi') || 
+          key.toLowerCase().includes('id') ||
+          key.toLowerCase().includes('uid') ||
+          key.toLowerCase().includes('rowNumber')) {
+        if (record1[key] === record2[key]) {
           filtered[key] = value;
         }
+      } else {
+        filtered[key] = value;
       }
-      return filtered;
-    };
+    }
+    return filtered;
+  };
 
-    const filteredRecord1 = filterRecord(record1);
-    const filteredRecord2 = filterRecord(record2);
+  const filteredRecord1 = filterRecord(record1);
+  const filteredRecord2 = filterRecord(record2);
 
-    // Smart rules engine analysis
-    const rulesEngine = new SmartDuplicateRulesEngine();
-    const smartAnalysis: SmartAnalysisResult = await rulesEngine.analyzeRecords({
-      record1: filteredRecord1,
-      record2: filteredRecord2,
-      fuzzyScore: fuzzyScore,
-    });
+  // Smart rules engine analysis
+  const rulesEngine = new SmartDuplicateRulesEngine();
+  const smartAnalysis: SmartAnalysisResult = await rulesEngine.analyzeRecords({
+    record1: filteredRecord1,
+    record2: filteredRecord2,
+    fuzzyScore: fuzzyScore,
+  });
+
+  try {
 
     // Call the provider-specific AI analysis
     const result = await callProviderAPI(
@@ -104,17 +130,59 @@ export async function analyzeWithFallback(
   } catch (error) {
     console.error(`❌ Error with ${currentProvider.name}:`, error);
     
-    // Try to switch to next healthy provider
-    await providerManager.runHealthChecks();
-    const newProvider = providerManager.getCurrentProvider();
+    // Check if this is a retryable error (network, timeout, parsing) vs a permanent error
+    const isRetryableError = error instanceof Error && (
+      error.message.includes('timeout') ||
+      error.message.includes('network') ||
+      error.message.includes('fetch') ||
+      error.message.includes('JSON') ||
+      error.message.includes('SyntaxError')
+    );
     
-    if (newProvider && newProvider.name !== currentProvider.name) {
-      console.log(`🔄 Retrying with fallback provider: ${newProvider.name}`);
-      // Recursive call with new provider
-      return analyzeWithFallback(record1, record2, fuzzyScore);
+    if (isRetryableError) {
+      // For retryable errors, try the same provider once more before switching
+      console.log(`🔄 Retrying with same provider ${currentProvider.name} due to retryable error`);
+      try {
+        const result = await callProviderAPI(
+          currentProvider,
+          filteredRecord1,
+          filteredRecord2,
+          fuzzyScore,
+          smartAnalysis
+        );
+        const validatedResult = AnalyzeDuplicateConfidenceOutputSchema.parse(result);
+        return validatedResult;
+      } catch (retryError) {
+        console.error(`❌ Retry failed for ${currentProvider.name}:`, retryError);
+        // Now try fallback
+      }
     }
     
-    throw new Error('All AI providers failed');
+    // Mark the current provider as temporarily failed
+    if (providerManager && 'markProviderTemporarilyFailed' in providerManager) {
+      (providerManager as any).markProviderTemporarilyFailed(currentProvider.name);
+    }
+    
+    // Try to get a different provider
+    const allProviders = providerManager.getProviderStatus();
+    const nextProvider = allProviders.find(p => 
+      p.name !== currentProvider.name && 
+      p.isHealthy !== false && 
+      (p.errorCount || 0) < 3
+    );
+    
+    if (nextProvider) {
+      console.log(`🔄 Switching to fallback provider: ${nextProvider.name}`);
+      
+      // Manually set the provider without running health checks
+      const manager = providerManager as any;
+      manager.currentProvider = nextProvider;
+      
+      // Single recursive call with new provider (prevent infinite recursion)
+      return analyzeWithFallback(record1, record2, fuzzyScore, maxRetries - 1);
+    }
+    
+    throw new Error(`All AI providers failed. Last error from ${currentProvider.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -247,7 +315,7 @@ Analyze these specific records and provide a JSON response with your detailed as
  * Azure OpenAI API call
  */
 async function callAzureOpenAI(provider: any, prompt: string): Promise<AnalyzeDuplicateConfidenceOutput> {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `${provider.config.endpoint}/openai/deployments/${provider.config.deployment}/chat/completions?api-version=${provider.config.apiVersion}`,
     {
       method: 'POST',
@@ -270,7 +338,8 @@ async function callAzureOpenAI(provider: any, prompt: string): Promise<AnalyzeDu
         max_tokens: 1000,
         response_format: { type: 'json_object' }
       }),
-    }
+    },
+    20000 // 20 second timeout for AI calls
   );
 
   if (!response.ok) {
@@ -279,14 +348,43 @@ async function callAzureOpenAI(provider: any, prompt: string): Promise<AnalyzeDu
   }
 
   const data = await response.json();
-  return JSON.parse(data.choices[0].message.content);
+  
+  // Validate response structure
+  if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+    console.error('Invalid Azure OpenAI response structure:', data);
+    throw new Error('Invalid response structure from Azure OpenAI');
+  }
+  
+  const content = data.choices[0].message.content;
+  
+  try {
+    // Try to parse the JSON content
+    return JSON.parse(content);
+  } catch (parseError) {
+    console.error('Failed to parse Azure OpenAI JSON response:', {
+      content: content.substring(0, 500) + (content.length > 500 ? '...' : ''),
+      parseError: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+    });
+    
+    // Try to extract JSON from the content if it's embedded in text
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch (secondParseError) {
+        console.error('Failed to parse extracted JSON:', secondParseError);
+      }
+    }
+    
+    throw new Error(`Failed to parse JSON response from Azure OpenAI: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+  }
 }
 
 /**
  * OpenAI API call
  */
 async function callOpenAI(provider: any, prompt: string): Promise<AnalyzeDuplicateConfidenceOutput> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -308,7 +406,7 @@ async function callOpenAI(provider: any, prompt: string): Promise<AnalyzeDuplica
       max_tokens: 1000,
       response_format: { type: 'json_object' }
     }),
-  });
+  }, 20000);
 
   if (!response.ok) {
     const error = await response.text();
@@ -324,7 +422,7 @@ async function callOpenAI(provider: any, prompt: string): Promise<AnalyzeDuplica
  */
 async function callGoogleGemini(provider: any, prompt: string): Promise<AnalyzeDuplicateConfidenceOutput> {
   const model = provider.config.model || 'gemini-2.0-flash-lite'; // Use the fastest model
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${provider.config.apiKey}`,
     {
       method: 'POST',
@@ -343,7 +441,8 @@ async function callGoogleGemini(provider: any, prompt: string): Promise<AnalyzeD
           responseMimeType: "application/json"
         }
       }),
-    }
+    },
+    20000
   );
 
   if (!response.ok) {

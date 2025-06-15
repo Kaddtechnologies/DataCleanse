@@ -11,7 +11,9 @@ const pool = new Pool({
   ssl: false,
   max: 20,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 10000, // Increased from 2s to 10s
+  query_timeout: 30000, // 30 second query timeout
+  statement_timeout: 30000, // 30 second statement timeout
 });
 
 // Test database connection on initialization
@@ -23,6 +25,49 @@ pool.on('error', (err) => {
   console.error('PostgreSQL pool error:', err);
 });
 
+// Monitor pool metrics
+let connectionAttempts = 0;
+let connectionFailures = 0;
+
+pool.on('acquire', () => {
+  connectionAttempts++;
+});
+
+pool.on('connect', () => {
+  const poolMetrics = {
+    totalCount: pool.totalCount,
+    idleCount: pool.idleCount,
+    waitingCount: pool.waitingCount,
+    connectionAttempts,
+    connectionFailures
+  };
+  console.log('Pool connection acquired:', poolMetrics);
+});
+
+pool.on('remove', () => {
+  console.log('Client removed from pool');
+});
+
+// Enhanced error handling for connection timeouts
+const originalConnect = pool.connect.bind(pool);
+pool.connect = async function() {
+  try {
+    const client = await originalConnect();
+    return client;
+  } catch (error) {
+    connectionFailures++;
+    console.error('Pool connection failed:', {
+      error: error instanceof Error ? error.message : error,
+      totalCount: pool.totalCount,
+      idleCount: pool.idleCount,
+      waitingCount: pool.waitingCount,
+      connectionAttempts,
+      connectionFailures
+    });
+    throw error;
+  }
+};
+
 export { pool };
 
 // Database utility functions
@@ -31,6 +76,7 @@ export interface UserSession {
   session_name: string;
   file_name?: string;
   file_hash?: string;
+  file_size?: number;
   user_id?: string;
   total_pairs: number;
   processed_pairs: number;
@@ -66,17 +112,18 @@ export async function createUserSession(
   sessionName: string,
   fileName?: string,
   fileHash?: string,
+  fileSize?: number,
   userId?: string,
   metadata: Record<string, any> = {}
 ): Promise<UserSession> {
   const client = await pool.connect();
   try {
     const query = `
-      INSERT INTO user_sessions (session_name, file_name, file_hash, user_id, metadata)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO user_sessions (session_name, file_name, file_hash, file_size, user_id, metadata)
+      VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
-    const result = await client.query(query, [sessionName, fileName, fileHash, userId, JSON.stringify(metadata)]);
+    const result = await client.query(query, [sessionName, fileName, fileHash, fileSize, userId, JSON.stringify(metadata)]);
     return result.rows[0];
   } finally {
     client.release();
@@ -86,7 +133,14 @@ export async function createUserSession(
 export async function getUserSession(sessionId: string): Promise<UserSession | null> {
   const client = await pool.connect();
   try {
-    const query = 'SELECT * FROM user_sessions WHERE id = $1';
+    const query = `
+      SELECT 
+        s.*,
+        fu.file_size
+      FROM user_sessions s
+      LEFT JOIN file_uploads fu ON s.id = fu.session_id
+      WHERE s.id = $1
+    `;
     const result = await client.query(query, [sessionId]);
     return result.rows[0] || null;
   } finally {
@@ -160,8 +214,9 @@ export async function createDuplicatePairsBatch(
           session_id, record1_data, record2_data, fuzzy_similarity_score,
           original_score, enhanced_score, enhanced_confidence
         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
       `;
-      await client.query(query, [
+      const result = await client.query(query, [
         sessionId,
         JSON.stringify(pair.record1),
         JSON.stringify(pair.record2),
@@ -170,6 +225,8 @@ export async function createDuplicatePairsBatch(
         pair.enhancedScore || null,
         pair.enhancedConfidence || null
       ]);
+      
+      console.log(`Created duplicate pair with ID: ${result.rows[0].id}`);
     }
     
     // Update total_pairs in session with the actual number of valid pairs saved
@@ -285,7 +342,7 @@ export async function updateDuplicatePair(
     const query = `
       UPDATE duplicate_pairs 
       SET ${setParts.join(', ')}
-      WHERE id = $${paramIndex}
+      WHERE id = $${paramIndex}::uuid
     `;
 
     const result = await client.query(query, values);
@@ -295,6 +352,19 @@ export async function updateDuplicatePair(
       updates,
       rowsAffected: result.rowCount
     });
+
+    // If no rows were affected, check if the pair exists
+    if ((result.rowCount ?? 0) === 0) {
+      const checkQuery = 'SELECT id, session_id FROM duplicate_pairs WHERE id = $1::uuid';
+      const checkResult = await client.query(checkQuery, [pairId]);
+      
+      if (checkResult.rows.length === 0) {
+        console.error(`Pair ${pairId} not found in database`);
+        throw new Error(`Duplicate pair ${pairId} not found`);
+      } else {
+        console.error(`Pair ${pairId} exists but update failed. Query: ${query}, Values:`, values);
+      }
+    }
 
     // If status was updated, manually trigger session stats recalculation
     if (updates.status !== undefined && (result.rowCount ?? 0) > 0) {
@@ -311,10 +381,10 @@ export async function updateDuplicatePair(
         const statsQuery = `
           UPDATE user_sessions 
           SET 
-            total_pairs = (SELECT COUNT(*) FROM duplicate_pairs WHERE session_id = $1),
-            processed_pairs = (SELECT COUNT(*) FROM duplicate_pairs WHERE session_id = $1 AND status != 'pending'),
+            total_pairs = (SELECT COUNT(*) FROM duplicate_pairs WHERE session_id = $1::uuid),
+            processed_pairs = (SELECT COUNT(*) FROM duplicate_pairs WHERE session_id = $1::uuid AND status != 'pending'),
             last_accessed = CURRENT_TIMESTAMP
-          WHERE id = $1
+          WHERE id = $1::uuid
           RETURNING total_pairs, processed_pairs
         `;
         
@@ -428,28 +498,34 @@ export async function updateFileUploadStatus(
   }
 }
 
-// Utility function to get session statistics
-export async function getSessionStatistics(sessionId: string): Promise<any> {
-  const client = await pool.connect();
-  try {
-    const query = 'SELECT get_session_stats($1) as stats';
-    const result = await client.query(query, [sessionId]);
-    return result.rows[0]?.stats || null;
-  } finally {
-    client.release();
-  }
-}
-
 // Health check function
 export async function checkDatabaseHealth(): Promise<boolean> {
+  let client: PoolClient | null = null;
   try {
-    const client = await pool.connect();
-    await client.query('SELECT 1');
-    client.release();
+    // Use a shorter timeout for health checks
+    client = await pool.connect();
+    await client.query('SELECT 1', []);
     return true;
   } catch (error) {
     console.error('Database health check failed:', error);
+    // Log more details about the error
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack?.split('\n').slice(0, 3).join('\n')
+      });
+    }
     return false;
+  } finally {
+    // Always release the client if it was acquired
+    if (client) {
+      try {
+        client.release();
+      } catch (releaseError) {
+        console.error('Error releasing client during health check:', releaseError);
+      }
+    }
   }
 }
 
@@ -722,6 +798,48 @@ export async function deleteDuplicatePairs(pairIds: string[]): Promise<{ deleted
   }
 }
 
+// Get real-time session statistics for the UI
+export async function getSessionStatistics(sessionId: string): Promise<{
+  total_pairs: number;
+  pending: number;
+  duplicate: number;
+  not_duplicate: number;
+  skipped: number;
+  auto_merged: number;
+} | null> {
+  const client = await pool.connect();
+  try {
+    const query = `
+      SELECT 
+        COUNT(*) as total_pairs,
+        COUNT(*) FILTER (WHERE status = 'pending') as pending,
+        COUNT(*) FILTER (WHERE status = 'duplicate') as duplicate,
+        COUNT(*) FILTER (WHERE status = 'not_duplicate') as not_duplicate,
+        COUNT(*) FILTER (WHERE status = 'skipped') as skipped,
+        COUNT(*) FILTER (WHERE status = 'merged') as auto_merged
+      FROM duplicate_pairs 
+      WHERE session_id = $1
+    `;
+    const result = await client.query(query, [sessionId]);
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+    
+    const row = result.rows[0];
+    return {
+      total_pairs: parseInt(row.total_pairs),
+      pending: parseInt(row.pending),
+      duplicate: parseInt(row.duplicate),
+      not_duplicate: parseInt(row.not_duplicate),
+      skipped: parseInt(row.skipped),
+      auto_merged: parseInt(row.auto_merged)
+    };
+  } finally {
+    client.release();
+  }
+}
+
 // Cleanup function for old sessions
 export async function cleanupOldSessions(daysOld: number = 30): Promise<number> {
   const client = await pool.connect();
@@ -733,3 +851,48 @@ export async function cleanupOldSessions(daysOld: number = 30): Promise<number> 
     client.release();
   }
 }
+
+// Update session metadata with UI state and progress
+export async function updateSessionMetadata(
+  sessionId: string,
+  metadataUpdates: Record<string, any>
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    // First get existing metadata
+    const getQuery = 'SELECT metadata FROM user_sessions WHERE id = $1::uuid';
+    const getResult = await client.query(getQuery, [sessionId]);
+    
+    if (getResult.rows.length === 0) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+    
+    // Merge with existing metadata
+    const currentMetadata = getResult.rows[0].metadata || {};
+    const mergedMetadata = {
+      ...currentMetadata,
+      ...metadataUpdates,
+      last_updated: new Date().toISOString()
+    };
+    
+    // Update the session
+    const updateQuery = `
+      UPDATE user_sessions 
+      SET 
+        metadata = $1,
+        last_accessed = CURRENT_TIMESTAMP
+      WHERE id = $2::uuid
+    `;
+    
+    await client.query(updateQuery, [JSON.stringify(mergedMetadata), sessionId]);
+    
+    console.log(`Updated session ${sessionId} metadata:`, mergedMetadata);
+  } finally {
+    client.release();
+  }
+}
+
+// Function aliases for backward compatibility
+export const createSession = createUserSession;
+export const getSessionById = getUserSession;
+export const getSessionDuplicatePairs = getDuplicatePairsForSession;

@@ -339,52 +339,21 @@ export function performStage1Validation(pairs: DuplicatePair[]): {
  * @returns Categorized results based on address matching
  */
 export function performStage2AddressDetection(noNamePairs: DuplicatePair[]): {
-  invalidDuplicates: DuplicatePair[];   // Records sharing identical addresses
-  remainingInvalid: DuplicatePair[];    // Records with unique addresses moved to invalid list
+  invalidDuplicates: DuplicatePair[];   // Pairs where BOTH records have no name but exact address match
+  remainingInvalid: DuplicatePair[];    // All other invalid pairs
 } {
   const invalidDuplicates: DuplicatePair[] = [];
   const remainingInvalid: DuplicatePair[] = [];
   
-  // Group records by normalized address key
-  const addressGroups = new Map<string, DuplicatePair[]>();
-  
   noNamePairs.forEach(pair => {
-    // Create address keys for both records
-    const createAddressKey = (record: CustomerRecord): string => {
-      if (!hasValidAddressInfo(record)) return '';
-      
-      const address = (record.address || '').toLowerCase().replace(/[^\w\s]/g, '').trim();
-      const city = (record.city || '').toLowerCase().trim();
-      const country = (record.country || record.state || '').toLowerCase().trim();
-      
-      return `${address}|${city}|${country}`;
-    };
+    const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
     
-    const key1 = createAddressKey(pair.record1);
-    const key2 = createAddressKey(pair.record2);
-    
-    // Use the key from the record with valid address info
-    const addressKey = key1 || key2;
-    
-    if (addressKey) {
-      if (!addressGroups.has(addressKey)) {
-        addressGroups.set(addressKey, []);
-      }
-      addressGroups.get(addressKey)!.push(pair);
+    // Invalid duplicate pairs: BOTH records have no name AND addresses match exactly
+    if (record1Invalid && record2Invalid && hasMatchingAddress(pair.record1, pair.record2)) {
+      invalidDuplicates.push(pair);
     } else {
-      // No valid address found, move to remaining invalid
+      // All other cases go to remaining invalid
       remainingInvalid.push(pair);
-    }
-  });
-  
-  // Process address groups
-  addressGroups.forEach(pairs => {
-    if (pairs.length > 1) {
-      // Multiple pairs share the same address - these are invalid duplicates
-      pairs.forEach(pair => invalidDuplicates.push(pair));
-    } else {
-      // Unique address - move to remaining invalid
-      pairs.forEach(pair => remainingInvalid.push(pair));
     }
   });
   

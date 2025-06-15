@@ -107,7 +107,17 @@ export interface DuplicateAnalysisInput {
     ): Promise<RuleResult[]> {
       const results: RuleResult[] = [];
   
-      // Apply rules in priority order
+      // CRITICAL: Apply data validation rules FIRST - these are blocking rules
+      results.push(...this.applyCriticalDataValidationRules(input, analysis));
+      
+      // Check if we have blocking critical data issues
+      const criticalIssues = results.filter(r => r.ruleType === 'critical_validation');
+      if (criticalIssues.length > 0) {
+        // If we have critical validation failures, return early with minimal analysis
+        return results;
+      }
+  
+      // Apply business rules in priority order (only if critical data is valid)
       results.push(...this.applyJointVentureRules(input, analysis));
       // results.push(...this.applyHierarchyRules(input, analysis)); // TODO: Implement this method
       results.push(...this.applyGeographicRules(input, analysis));
@@ -220,8 +230,8 @@ export interface DuplicateAnalysisInput {
             confidence: 'high',
             confidenceScore: 90,
             recommendation: 'merge',
-            reasoning: 'Same address and similar company names - strong indication of duplicate or same entity',
-            businessJustification: 'Identical locations with similar names typically represent the same business entity',
+            reasoning: 'Same address and similar company names - strong indication of duplicate or possible parent/subsidiary relationship',
+            businessJustification: 'Identical locations with similar names typically represent the same business entity and possible parent/subsidiary relationship',
             flags: ['identical_location', 'strong_match']
           });
         }
@@ -475,6 +485,71 @@ export interface DuplicateAnalysisInput {
   
       return results;
     }
+
+    /**
+     * RULE SET 10: Critical Data Validation - Applied FIRST
+     * These are blocking rules that prevent meaningful comparison
+     */
+    private applyCriticalDataValidationRules(input: DuplicateAnalysisInput, analysis: any): RuleResult[] {
+      const results: RuleResult[] = [];
+      const { record1, record2 } = input;
+
+      // Extract name fields - check both common name field variations
+      const name1 = this.extractName(record1);
+      const name2 = this.extractName(record2);
+
+      // Check for missing, null, undefined, or placeholder names
+      const name1Invalid = this.isInvalidName(name1);
+      const name2Invalid = this.isInvalidName(name2);
+
+      if (name1Invalid || name2Invalid) {
+        results.push({
+          ruleType: 'critical_validation',
+          ruleName: 'missing_name_validation',
+          confidence: 'low',
+          confidenceScore: 0, // Zero confidence for records without names
+          recommendation: 'reject',
+          reasoning: `Records with missing, null, undefined, or placeholder names (like 'nan') cannot be meaningfully compared for duplicate detection.`,
+          businessJustification: 'Name is the most critical field for duplicate detection. Without valid names, comparison is not meaningful.',
+          flags: ['missing_name', 'critical_data_missing', 'comparison_invalid'],
+          exemptionReason: 'Critical data missing - requires data cleanup before duplicate analysis'
+        });
+      }
+
+      // Check for identical missing names (both invalid)
+      if (name1Invalid && name2Invalid) {
+        results.push({
+          ruleType: 'critical_validation',
+          ruleName: 'both_names_missing',
+          confidence: 'low',
+          confidenceScore: 0,
+          recommendation: 'reject',
+          reasoning: 'Both records have missing or invalid names. This comparison is meaningless and should be rejected.',
+          businessJustification: 'Cannot perform meaningful duplicate detection when both records lack valid company names.',
+          flags: ['both_names_invalid', 'comparison_impossible'],
+          exemptionReason: 'Both records require name data cleanup before analysis'
+        });
+      }
+
+      // Check for very short names (likely incomplete)
+      if (!name1Invalid && !name2Invalid) {
+        if (name1.length < 3 || name2.length < 3) {
+          results.push({
+            ruleType: 'critical_validation',
+            ruleName: 'insufficient_name_data',
+            confidence: 'low',
+            confidenceScore: 10,
+            recommendation: 'flag',
+            reasoning: 'One or both company names are extremely short (less than 3 characters), making reliable comparison difficult.',
+            businessJustification: 'Very short names often indicate incomplete data entry or abbreviations that require human review.',
+            flags: ['short_name', 'incomplete_data'],
+            exemptionReason: 'Insufficient name data for reliable automated comparison'
+          });
+        }
+      }
+
+      return results;
+    }
   
     // === SYNTHESIS & FINAL DECISION ===
   
@@ -487,7 +562,27 @@ export interface DuplicateAnalysisInput {
       appliedRules: RuleResult[]
     ): SmartAnalysisResult {
       
-      // Calculate weighted confidence score
+      // Check for critical validation failures FIRST
+      const criticalIssues = appliedRules.filter(r => r.ruleType === 'critical_validation');
+      
+      if (criticalIssues.length > 0) {
+        // If we have critical validation failures, use the lowest score from critical rules
+        const lowestCriticalScore = Math.min(...criticalIssues.map(r => r.confidenceScore));
+        const criticalRecommendation = criticalIssues.some(r => r.recommendation === 'reject') ? 'reject' : 'flag';
+        
+        return {
+          finalConfidence: 'low',
+          finalConfidenceScore: lowestCriticalScore,
+          recommendation: criticalRecommendation,
+          appliedRules,
+          businessContext: this.generateCriticalValidationContext(criticalIssues),
+          riskFactors: this.extractRiskFactors(appliedRules),
+          exemptions: appliedRules.filter(r => r.exemptionReason).map(r => r.exemptionReason!),
+          detailedAnalysis
+        };
+      }
+      
+      // Standard scoring for valid data
       let totalScore = input.fuzzyScore * 100;
       let totalWeight = 1;
   
@@ -521,6 +616,57 @@ export interface DuplicateAnalysisInput {
     }
   
     // === HELPER METHODS ===
+
+    /**
+     * Extract name from record, checking multiple possible field names
+     */
+    private extractName(record: Record<string, string>): string {
+      return record.customer_name || record.name || record.company_name || '';
+    }
+
+    /**
+     * Check if a name is invalid (missing, null, undefined, or placeholder)
+     */
+    private isInvalidName(name: string): boolean {
+      if (!name || name.trim() === '') return true;
+      
+      const trimmedLower = name.trim().toLowerCase();
+      
+      // Check for common placeholder values
+      const invalidPatterns = [
+        'nan',           // pandas NaN string representation
+        'null',          // null string
+        'undefined',     // undefined string
+        'none',          // None string
+        'n/a',           // not available
+        'na',            // not available short
+        'tbd',           // to be determined
+        'tbc',           // to be confirmed
+        'xxx',           // placeholder
+        '...',           // placeholder dots
+        '---',           // placeholder dashes
+        '___',           // placeholder underscores
+        'unknown',       // unknown placeholder
+        'test',          // test data
+        'sample',        // sample data
+        'dummy',         // dummy data
+        'placeholder'    // literal placeholder
+      ];
+      
+      // Check exact matches with invalid patterns
+      if (invalidPatterns.includes(trimmedLower)) return true;
+      
+      // Check for all numeric (likely an ID mistakenly in name field)
+      if (/^\d+$/.test(trimmedLower)) return true;
+      
+      // Check for single character (likely incomplete)
+      if (trimmedLower.length === 1) return true;
+      
+      // Check for repeated characters (like "aaaa" or "1111")
+      if (/^(.)\1{2,}$/.test(trimmedLower)) return true;
+      
+      return false;
+    }
   
     private calculateNameSimilarity(name1: string, name2: string): number {
       // Implement fuzzy string matching
@@ -727,11 +873,12 @@ export interface DuplicateAnalysisInput {
   
     private getRuleWeight(ruleType: string): number {
       const weights: { [key: string]: number } = {
+        'critical_validation': 1.0,     // Highest weight - critical issues override everything
         'business_relationship': 0.9,
         'hierarchy': 0.8,
+        'entity_type': 0.8,
         'geographic': 0.7,
         'business_type': 0.6,
-        'entity_type': 0.8,
         'data_quality': 0.5
       };
       return weights[ruleType] || 0.5;
@@ -767,6 +914,16 @@ export interface DuplicateAnalysisInput {
       return contexts.length > 0 
         ? contexts.join('. ')
         : 'Standard duplicate detection analysis applied.';
+    }
+
+    private generateCriticalValidationContext(criticalIssues: RuleResult[]): string {
+      const contexts = criticalIssues
+        .filter(r => r.businessJustification)
+        .map(r => r.businessJustification!);
+      
+      return contexts.length > 0 
+        ? contexts.join('. ')
+        : 'Critical data validation failed. Records require data cleanup before meaningful duplicate detection can be performed.';
     }
   
     private extractRiskFactors(rules: RuleResult[]): string[] {

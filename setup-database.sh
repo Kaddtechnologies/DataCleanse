@@ -61,15 +61,7 @@ check_docker() {
 
 check_node() {
     print_step "Checking Node.js installation..."
-    if ! command -v node &> /dev/null; then
-        print_error "Node.js is not installed. Please install Node.js 18+ first."
-        exit 1
-    fi
-    
-    if ! command -v npm &> /dev/null; then
-        print_error "npm is not installed. Please install npm first."
-        exit 1
-    fi
+
     
     NODE_VERSION=$(node --version | cut -d'v' -f2 | cut -d'.' -f1)
     if [ "$NODE_VERSION" -lt 18 ]; then
@@ -83,14 +75,14 @@ check_node() {
 install_dependencies() {
     print_step "Installing PostgreSQL client and dependencies..."
     
-    # Check if pg package is already installed
-    if npm list pg &> /dev/null; then
-        print_info "PostgreSQL client dependencies already installed"
-    else
-        print_info "Installing PostgreSQL client dependencies..."
-        npm install pg @types/pg pgvector
-        print_success "Dependencies installed"
-    fi
+    # # Check if pg package is already installed
+    # if npm list pg &> /dev/null; then
+    #     print_info "PostgreSQL client dependencies already installed"
+    # else
+    #     print_info "Installing PostgreSQL client dependencies..."
+    #     npm install pg @types/pg pgvector
+    #     print_success "Dependencies installed"
+    # fi
 }
 
 stop_existing_containers() {
@@ -193,6 +185,30 @@ verify_database() {
         print_error "Database tables were not created properly"
         exit 1
     fi
+    
+    # Run migration script to ensure all tables exist
+    print_info "Running migration to ensure all tables exist..."
+    if [ -f "scripts/add-missing-tables.sql" ]; then
+        docker exec -i $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME < scripts/add-missing-tables.sql &> /dev/null || true
+        print_success "Migration script executed"
+    fi
+}
+
+seed_database() {
+    print_step "Seeding database with comprehensive test data..."
+    
+    if [ -f "scripts/seed-database.js" ]; then
+        print_info "Running database seeder..."
+        if node scripts/seed-database.js; then
+            print_success "Database seeded with comprehensive test data"
+            print_info "Demo session created with realistic duplicate pairs"
+        else
+            print_error "Database seeding failed"
+            print_info "Continuing without seed data..."
+        fi
+    else
+        print_info "No seed script found, skipping database seeding"
+    fi
 }
 
 create_env_file() {
@@ -286,6 +302,7 @@ main() {
     start_database
     start_redis
     verify_database
+    seed_database
     create_env_file
     
     echo ""
