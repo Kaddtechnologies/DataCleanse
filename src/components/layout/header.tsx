@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { History, Moon, Sun, Database, TestTube } from "lucide-react";
+import { History, Moon, Sun, Database, TestTube, LayoutDashboard } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { SessionLoadingDialog } from "@/components/session-loading-dialog";
 
@@ -58,6 +59,8 @@ function ThemeToggle() {
 
 export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, lastSaved, refreshStatsCounter }: AppHeaderProps) {
   const { theme } = useTheme();
+  const router = useRouter();
+  const pathname = usePathname();
   const logoSrc = theme === "dark" ? "/flowserve_logo_white.svg" : "/flowserve_logo_white.svg";
   const [hasAvailableSessions, setHasAvailableSessions] = useState(false);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
@@ -146,8 +149,42 @@ export function AppHeader({ onLoadPreviousSession, sessionId, sessionStatus, las
             </div>
           </div>
 
-          {/* Executive Controls: Sessions + Theme */}
+          {/* Executive Controls: Navigation + Sessions + Theme */}
           <div className="flex items-center space-x-4">
+            {/* Navigation Buttons */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className={`group relative flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-300 ${
+                  pathname === '/dashboard' 
+                    ? 'bg-white/15 border border-white/25' 
+                    : 'bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20'
+                } backdrop-blur-sm`}
+                aria-label="Dashboard"
+              >
+                <LayoutDashboard className="w-4 h-4 text-white/80 group-hover:text-white transition-colors duration-300" />
+                <span className="text-sm font-medium text-white/90 group-hover:text-white transition-colors duration-300">
+                  Dashboard
+                </span>
+              </button>
+              <button
+                onClick={() => router.push('/')}
+                className={`group relative flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-300 ${
+                  pathname === '/' 
+                    ? 'bg-white/15 border border-white/25' 
+                    : 'bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20'
+                } backdrop-blur-sm`}
+                aria-label="Deduplication"
+              >
+                <Database className="w-4 h-4 text-white/80 group-hover:text-white transition-colors duration-300" />
+                <span className="text-sm font-medium text-white/90 group-hover:text-white transition-colors duration-300">
+                  Deduplication
+                </span>
+              </button>
+            </div>
+            
+            <div className="w-px h-6 bg-white/15" />
+            
             {onLoadPreviousSession && hasAvailableSessions && !checkingSessions && (
               <button
                 onClick={() => setSessionDialogOpen(true)}

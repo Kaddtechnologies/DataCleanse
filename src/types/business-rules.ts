@@ -1,0 +1,593 @@
+/**
+ * @fileOverview Comprehensive TypeScript types for the Business Rules Engine
+ * @description Type definitions for rule creation, testing, deployment, and conversation management
+ */
+
+import { CustomerRecord } from './index';
+
+/**
+ * Core business rule definition
+ * Represents a single rule that can be applied to customer records
+ */
+export interface BusinessRule {
+  /** Unique identifier for the rule */
+  id: string;
+  
+  /** Human-readable name of the rule */
+  name: string;
+  
+  /** Detailed description of what the rule does */
+  description: string;
+  
+  /** Category of the rule for organization */
+  category: 'data-quality' | 'business-relationship' | 'geographic' | 'entity-type' | 'critical-validation';
+  
+  /** Priority level for rule execution order */
+  priority: number;
+  
+  /** Whether the rule is currently active */
+  enabled: boolean;
+  
+  /** Version number for tracking changes */
+  version: string;
+  
+  /** Rule condition as a serialized function or expression */
+  condition: string;
+  
+  /** Action to take when condition is met */
+  action: RuleAction;
+  
+  /** Alternative property names for compatibility */
+  conditions?: string;
+  actions?: RuleAction;
+  
+  /** User who created the rule */
+  createdBy?: string;
+  
+  /** User who last modified the rule */
+  lastModifiedBy?: string;
+  
+  /** Metadata about rule creation and modification */
+  metadata: RuleMetadata;
+  
+  /** Tags for filtering and searching */
+  tags: string[];
+  
+  /** Performance metrics for the rule */
+  statistics?: RuleStatistics;
+}
+
+/**
+ * Result of applying a business rule
+ */
+export interface RuleResult {
+  /** Type of rule that was applied */
+  ruleType: string;
+  
+  /** Name of the specific rule */
+  ruleName: string;
+  
+  /** Confidence level of the result */
+  confidence: 'high' | 'medium' | 'low';
+  
+  /** Numeric confidence score (0-100) */
+  confidenceScore: number;
+  
+  /** Recommended action based on rule evaluation */
+  recommendation: 'merge' | 'review' | 'reject' | 'flag';
+  
+  /** Human-readable explanation of the result */
+  reasoning: string;
+  
+  /** Business justification for the decision */
+  businessJustification?: string;
+  
+  /** Warning or information flags */
+  flags: string[];
+  
+  /** Reason if rule was exempted */
+  exemptionReason?: string;
+  
+  /** Time taken to evaluate the rule in milliseconds */
+  executionTime?: number;
+}
+
+/**
+ * Test case for validating business rules
+ */
+export interface TestCase {
+  /** Unique identifier for the test case */
+  id: string;
+  
+  /** Name of the test case */
+  name: string;
+  
+  /** Description of what is being tested */
+  description: string;
+  
+  /** Rule ID this test case is for */
+  ruleId: string;
+  
+  /** Input data for the test */
+  input: {
+    record1: Partial<CustomerRecord>;
+    record2: Partial<CustomerRecord>;
+    fuzzyScore?: number;
+  };
+  
+  /** Expected output from the rule */
+  expectedOutput: {
+    confidence: 'high' | 'medium' | 'low';
+    recommendation: 'merge' | 'review' | 'reject' | 'flag';
+    shouldTrigger: boolean;
+  };
+  
+  /** Test metadata */
+  metadata: {
+    createdBy: string;
+    createdAt: string;
+    lastModified: string;
+    tags: string[];
+  };
+}
+
+/**
+ * Result of running a test case
+ */
+export interface TestResult {
+  /** Test case that was run */
+  testCaseId: string;
+  
+  /** Whether the test passed */
+  passed: boolean;
+  
+  /** Actual output from the rule */
+  actualOutput: RuleResult;
+  
+  /** Expected output for comparison */
+  expectedOutput: {
+    confidence: 'high' | 'medium' | 'low';
+    recommendation: 'merge' | 'review' | 'reject' | 'flag';
+    shouldTrigger: boolean;
+  };
+  
+  /** Test accuracy percentage */
+  accuracy?: number;
+  
+  /** Suggested additional tests */
+  suggestedTests?: TestCase[];
+  
+  /** Detailed comparison of differences */
+  differences?: {
+    field: string;
+    expected: any;
+    actual: any;
+  }[];
+  
+  /** Execution details */
+  execution: {
+    duration: number;
+    timestamp: string;
+    error?: string;
+  };
+}
+
+/**
+ * Context for AI conversation about business rules
+ */
+export interface ConversationContext {
+  /** Unique session identifier */
+  sessionId: string;
+  
+  /** Type of conversation */
+  type: 'rule-creation' | 'rule-modification' | 'testing' | 'deployment' | 'analysis';
+  
+  /** Current state of the conversation */
+  state: 'active' | 'paused' | 'completed' | 'failed';
+  
+  /** Rule being discussed (if applicable) */
+  ruleId?: string;
+  
+  /** Current phase of the conversation */
+  phase: 'requirements' | 'design' | 'implementation' | 'testing' | 'review';
+  
+  /** Context data specific to the conversation type */
+  contextData: Record<string, any>;
+  
+  /** Data steward ID */
+  stewardId?: string;
+  
+  /** Business context information */
+  businessContext?: Record<string, any>;
+  
+  /** Existing rules in the system */
+  existingRules?: BusinessRule[];
+  
+  /** Conversation messages */
+  messages?: ConversationMessage[];
+  
+  /** User information */
+  user: {
+    id: string;
+    name: string;
+    role: string;
+  };
+  
+  /** Timestamps */
+  startedAt: string;
+  lastActivity: string;
+}
+
+/**
+ * Message in a conversation
+ */
+export interface ConversationMessage {
+  /** Unique message identifier */
+  id: string;
+  
+  /** Session this message belongs to */
+  sessionId: string;
+  
+  /** Role of the message sender */
+  role: 'user' | 'assistant' | 'system';
+  
+  /** Type of message */
+  type?: 'text' | 'rule' | 'clarification' | 'error';
+  
+  /** Message content */
+  content: string;
+  
+  /** Structured data attached to the message */
+  attachments?: {
+    type: 'rule' | 'test-case' | 'test-result' | 'code' | 'data';
+    data: any;
+  }[];
+  
+  /** Message metadata */
+  metadata: {
+    timestamp: string;
+    tokens?: number;
+    model?: string;
+  };
+}
+
+/**
+ * Approval step in rule deployment
+ */
+export interface ApprovalStep {
+  /** Step identifier */
+  id: string;
+  
+  /** Type of approval needed */
+  type: 'technical' | 'business' | 'compliance' | 'security';
+  
+  /** Current status of the approval */
+  status: 'pending' | 'approved' | 'rejected' | 'skipped';
+  
+  /** Who needs to approve */
+  approver: {
+    id: string;
+    name: string;
+    role: string;
+  };
+  
+  /** Approval decision details */
+  decision?: {
+    approved: boolean;
+    comments: string;
+    conditions?: string[];
+    timestamp: string;
+  };
+  
+  /** Due date for approval */
+  dueDate?: string;
+}
+
+/**
+ * Deployment record for a business rule
+ */
+export interface DeploymentRecord {
+  /** Deployment identifier */
+  id: string;
+  
+  /** Rule being deployed */
+  ruleId: string;
+  
+  /** Version being deployed */
+  version: string;
+  
+  /** Target environment */
+  environment: 'development' | 'staging' | 'production';
+  
+  /** Deployment status */
+  status: 'pending' | 'in-progress' | 'completed' | 'failed' | 'rolled-back';
+  
+  /** Approval workflow */
+  approvals: ApprovalStep[];
+  
+  /** Deployment metadata */
+  metadata: {
+    deployedBy: string;
+    deployedAt?: string;
+    rollbackFrom?: string;
+    notes?: string;
+  };
+  
+  /** Test results before deployment */
+  testResults: {
+    passed: number;
+    failed: number;
+    skipped: number;
+    coverage: number;
+  };
+  
+  /** Performance impact analysis */
+  performanceImpact?: {
+    estimatedLatency: number;
+    resourceUsage: string;
+    affectedRecords: number;
+  };
+}
+
+/**
+ * Statistics for rule performance and usage
+ */
+export interface RuleStatistics {
+  /** Total number of times rule was evaluated */
+  totalExecutions: number;
+  
+  /** Number of times rule condition was met */
+  triggerCount: number;
+  
+  /** Average execution time in milliseconds */
+  averageExecutionTime: number;
+  
+  /** Success rate percentage */
+  successRate: number;
+  
+  /** Distribution of recommendations */
+  recommendationDistribution: {
+    merge: number;
+    review: number;
+    reject: number;
+    flag: number;
+  };
+  
+  /** Confidence score distribution */
+  confidenceDistribution: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  
+  /** Last time statistics were updated */
+  lastUpdated: string;
+  
+  /** Performance trends over time */
+  trends?: {
+    daily: TrendData[];
+    weekly: TrendData[];
+    monthly: TrendData[];
+  };
+}
+
+/**
+ * Rule action definition
+ */
+export interface RuleAction {
+  /** Type of action to perform */
+  type: 'set-confidence' | 'add-flag' | 'set-recommendation' | 'custom';
+  
+  /** Parameters for the action */
+  parameters: {
+    confidence?: 'high' | 'medium' | 'low';
+    confidenceScore?: number;
+    recommendation?: 'merge' | 'review' | 'reject' | 'flag';
+    flags?: string[];
+    customAction?: string;
+  };
+  
+  /** Side effects of the action */
+  sideEffects?: {
+    notification?: boolean;
+    logging?: boolean;
+    audit?: boolean;
+  };
+}
+
+/**
+ * Metadata about rule lifecycle
+ */
+export interface RuleMetadata {
+  /** Who created the rule */
+  createdBy: string;
+  
+  /** When the rule was created */
+  createdAt: string;
+  
+  /** Who last modified the rule */
+  modifiedBy?: string;
+  
+  /** When the rule was last modified */
+  modifiedAt?: string;
+  
+  /** Approval status */
+  approvalStatus: 'draft' | 'pending' | 'approved' | 'rejected';
+  
+  /** Last test accuracy percentage */
+  lastTestAccuracy?: number;
+  
+  /** Business owner of the rule */
+  businessOwner?: string;
+  
+  /** Technical owner of the rule */
+  technicalOwner?: string;
+  
+  /** Related documentation */
+  documentation?: {
+    url: string;
+    type: 'confluence' | 'sharepoint' | 'github' | 'other';
+  }[];
+}
+
+/**
+ * Trend data point for statistics
+ */
+export interface TrendData {
+  /** Date of the data point */
+  date: string;
+  
+  /** Number of executions */
+  executions: number;
+  
+  /** Average confidence score */
+  averageConfidence: number;
+  
+  /** Success rate */
+  successRate: number;
+  
+  /** Average execution time */
+  averageTime: number;
+}
+
+/**
+ * Rule validation result
+ */
+export interface RuleValidationResult {
+  /** Whether the rule is valid */
+  valid: boolean;
+  
+  /** Validation errors if any */
+  errors: {
+    field: string;
+    message: string;
+    severity: 'error' | 'warning' | 'info';
+  }[];
+  
+  /** Validation warnings */
+  warnings: string[];
+  
+  /** Suggested improvements */
+  suggestions: string[];
+}
+
+/**
+ * Rule template for common patterns
+ */
+export interface RuleTemplate {
+  /** Template identifier */
+  id: string;
+  
+  /** Template name */
+  name: string;
+  
+  /** Template description */
+  description: string;
+  
+  /** Category of rules this template creates */
+  category: BusinessRule['category'];
+  
+  /** Parameters needed to instantiate the template */
+  parameters: {
+    name: string;
+    type: 'string' | 'number' | 'boolean' | 'array' | 'object';
+    required: boolean;
+    default?: any;
+    description: string;
+  }[];
+  
+  /** Function to generate rule from parameters */
+  generator: (params: Record<string, any>) => Partial<BusinessRule>;
+}
+
+/**
+ * Batch operation for rules
+ */
+export interface RuleBatchOperation {
+  /** Operation identifier */
+  id: string;
+  
+  /** Type of operation */
+  type: 'create' | 'update' | 'delete' | 'enable' | 'disable';
+  
+  /** Rules affected by the operation */
+  ruleIds: string[];
+  
+  /** Operation status */
+  status: 'pending' | 'in-progress' | 'completed' | 'failed';
+  
+  /** Results of the operation */
+  results?: {
+    successful: string[];
+    failed: {
+      ruleId: string;
+      error: string;
+    }[];
+  };
+  
+  /** Operation metadata */
+  metadata: {
+    initiatedBy: string;
+    initiatedAt: string;
+    completedAt?: string;
+    notes?: string;
+  };
+}
+
+/**
+ * Rule execution context
+ */
+export interface RuleExecutionContext {
+  /** Session identifier */
+  sessionId: string;
+  
+  /** User context */
+  user: {
+    id: string;
+    role: string;
+    permissions: string[];
+  };
+  
+  /** Execution environment */
+  environment: 'development' | 'staging' | 'production';
+  
+  /** Feature flags */
+  featureFlags: Record<string, boolean>;
+  
+  /** Custom context data */
+  customData?: Record<string, any>;
+}
+
+/**
+ * Rule audit entry
+ */
+export interface RuleAuditEntry {
+  /** Audit entry identifier */
+  id: string;
+  
+  /** Rule that was executed */
+  ruleId: string;
+  
+  /** Action that was performed */
+  action: 'created' | 'updated' | 'deleted' | 'executed' | 'deployed' | 'rolled-back';
+  
+  /** Who performed the action */
+  performedBy: string;
+  
+  /** When the action was performed */
+  timestamp: string;
+  
+  /** Details of the action */
+  details: {
+    before?: any;
+    after?: any;
+    result?: RuleResult;
+    error?: string;
+  };
+  
+  /** IP address and user agent */
+  requestInfo?: {
+    ipAddress: string;
+    userAgent: string;
+  };
+}

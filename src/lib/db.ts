@@ -892,6 +892,9 @@ export async function updateSessionMetadata(
   }
 }
 
+// Export pool as db for API routes
+export const db = pool;
+
 // Function aliases for backward compatibility
 export const createSession = createUserSession;
 export const getSessionById = getUserSession;

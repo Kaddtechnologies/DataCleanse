@@ -1,0 +1,95 @@
+/**
+ * Example API route for AI-powered rule generation
+ * This demonstrates how to integrate the Claude AI client into your API
+ * 
+ * To use this:
+ * 1. Copy this file to route.ts (remove .example extension)
+ * 2. Ensure Azure OpenAI credentials are configured in environment.ts
+ * 3. Call the API with a POST request containing conversation data
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { ClaudeRuleGenerator } from '@/lib/ai/claude-client';
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { conversation, businessContext, existingRules, dataSchema } = body;
+
+    if (!conversation) {
+      return NextResponse.json(
+        { error: 'Conversation is required' },
+        { status: 400 }
+      );
+    }
+
+    // Initialize the AI client
+    const generator = new ClaudeRuleGenerator();
+
+    // Generate rules from the conversation
+    const result = await generator.generateRulesFromConversation({
+      conversation,
+      businessContext: businessContext || 'MDM duplicate detection system',
+      existingRules,
+      dataSchema
+    });
+
+    // Convert rules to code format if requested
+    const rulesWithCode = result.rules.map(rule => ({
+      ...rule,
+      generatedCode: generator.convertToSmartRuleFormat(rule)
+    }));
+
+    return NextResponse.json({
+      success: true,
+      rules: rulesWithCode,
+      summary: result.summary,
+      insights: result.insights,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error generating rules:', error);
+    
+    return NextResponse.json(
+      { 
+        error: 'Failed to generate rules',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Example usage:
+/*
+POST /api/ai-rules/generate
+Content-Type: application/json
+
+{
+  "conversation": "User: We need to flag records that share the same VAT number but have different company names.\nAnalyst: Should these be merged?\nUser: No, investigate first - could be divisions.",
+  "businessContext": "European subsidiary management system",
+  "dataSchema": {
+    "company_name": "string",
+    "vat_number": "string",
+    "address": "string",
+    "country": "string"
+  }
+}
+
+Response:
+{
+  "success": true,
+  "rules": [
+    {
+      "ruleType": "business_relationship",
+      "ruleName": "vat_number_mismatch",
+      "description": "Flag records with same VAT but different names",
+      "conditions": [...],
+      "generatedCode": "// Generated code here..."
+    }
+  ],
+  "summary": "Generated 1 rule for VAT number validation",
+  "insights": ["Consider adding country-specific VAT format validation"]
+}
+*/

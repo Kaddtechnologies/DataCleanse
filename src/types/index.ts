@@ -49,3 +49,6 @@ export interface DuplicatePair {
   // Cached AI Analysis Result (to avoid repeated API calls)
   cachedAiAnalysis?: any; // Store the complete AnalyzeDuplicateConfidenceOutput
 }
+
+// Export all business rules types
+export * from './business-rules';

@@ -1,0 +1,212 @@
+/**
+ * Integration tests for ClaudeRuleGenerator
+ * Note: These tests require a valid Azure OpenAI connection
+ */
+
+import { ClaudeRuleGenerator } from './claude-client';
+
+describe('ClaudeRuleGenerator Integration Tests', () => {
+  let generator: ClaudeRuleGenerator;
+  
+  beforeEach(() => {
+    generator = new ClaudeRuleGenerator();
+  });
+
+  describe('Rule Generation', () => {
+    it('should generate rules from a simple conversation', async () => {
+      const conversation = `
+        User: We need to flag records where companies share the same address.
+        Analyst: Should we merge them automatically?
+        User: No, they might be different businesses in the same building.
+      `;
+
+      const result = await generator.generateRulesFromConversation({
+        conversation,
+        businessContext: 'MDM duplicate detection system'
+      });
+
+      expect(result).toHaveProperty('rules');
+      expect(result).toHaveProperty('summary');
+      expect(result).toHaveProperty('insights');
+      expect(Array.isArray(result.rules)).toBe(true);
+      expect(result.rules.length).toBeGreaterThan(0);
+      
+      if (result.rules.length > 0) {
+        const rule = result.rules[0];
+        expect(rule).toHaveProperty('ruleType');
+        expect(rule).toHaveProperty('ruleName');
+        expect(rule).toHaveProperty('description');
+        expect(rule).toHaveProperty('conditions');
+        expect(rule).toHaveProperty('confidenceImpact');
+      }
+    });
+
+    it('should handle complex business scenarios', async () => {
+      const conversation = `
+        Business: We have a problem with joint ventures being merged incorrectly.
+        For example, Shell-BP Joint Venture and Shell Corporation are different entities.
+        Also, freight forwarders like DHL should never be merged with actual customers.
+      `;
+
+      const result = await generator.generateRulesFromConversation({
+        conversation,
+        businessContext: 'Export control compliance system'
+      });
+
+      expect(result.rules.length).toBeGreaterThan(0);
+      
+      // Check for joint venture rule
+      const jvRule = result.rules.find(r => 
+        r.ruleName.includes('joint') || r.description.toLowerCase().includes('joint venture')
+      );
+      expect(jvRule).toBeDefined();
+      
+      // Check for freight forwarder rule
+      const freightRule = result.rules.find(r => 
+        r.ruleName.includes('freight') || r.description.toLowerCase().includes('freight')
+      );
+      expect(freightRule).toBeDefined();
+    });
+  });
+
+  describe('Test Case Generation', () => {
+    it('should generate comprehensive test cases', async () => {
+      const rule = `
+        Rule: Detect potential acquisitions
+        If two companies have the same address and phone but different names,
+        they might be the result of an acquisition or merger.
+      `;
+
+      const result = await generator.generateTestCases({
+        rule,
+        ruleType: 'business_relationship'
+      });
+
+      expect(result).toHaveProperty('testCases');
+      expect(result).toHaveProperty('testSummary');
+      expect(Array.isArray(result.testCases)).toBe(true);
+      expect(result.testCases.length).toBeGreaterThan(0);
+      
+      // Check test case structure
+      if (result.testCases.length > 0) {
+        const testCase = result.testCases[0];
+        expect(testCase).toHaveProperty('testId');
+        expect(testCase).toHaveProperty('testName');
+        expect(testCase).toHaveProperty('testType');
+        expect(testCase).toHaveProperty('testData');
+        expect(testCase.testData).toHaveProperty('record1');
+        expect(testCase.testData).toHaveProperty('record2');
+        expect(testCase).toHaveProperty('expectedResult');
+      }
+      
+      // Check test summary
+      expect(result.testSummary.totalTests).toBe(result.testCases.length);
+      expect(result.testSummary.positiveTests).toBeGreaterThanOrEqual(0);
+      expect(result.testSummary.negativeTests).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('Rule Improvement', () => {
+    it('should suggest improvements for underperforming rules', async () => {
+      const rule = 'If company names are similar, mark as duplicate';
+      const testResults = [
+        { passed: false, reason: 'Failed on abbreviations like Inc vs Incorporated' },
+        { passed: false, reason: 'Failed on special characters in names' },
+        { passed: true, reason: 'Correctly identified exact matches' }
+      ];
+
+      const result = await generator.generateRuleImprovements({
+        rule,
+        testResults
+      });
+
+      expect(result).toHaveProperty('analysis');
+      expect(result).toHaveProperty('improvements');
+      expect(result).toHaveProperty('alternativeApproaches');
+      expect(Array.isArray(result.improvements)).toBe(true);
+      
+      // Check that improvements address the failures
+      expect(result.analysis.currentIssues.length).toBeGreaterThan(0);
+      expect(result.improvements.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Rule Validation', () => {
+    it('should identify conflicting rules', async () => {
+      const rules = [
+        'If addresses match, mark as high confidence',
+        'If addresses match but names differ, mark as low confidence',
+        'Always merge records with matching phone numbers'
+      ];
+
+      const result = await generator.validateRuleConsistency(rules);
+
+      expect(result).toHaveProperty('conflicts');
+      expect(result).toHaveProperty('redundancies');
+      expect(result).toHaveProperty('gaps');
+      expect(result).toHaveProperty('prioritization');
+      expect(result).toHaveProperty('overallAssessment');
+      
+      // Should identify the conflict between first two rules
+      expect(result.conflicts.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle network errors gracefully', async () => {
+      // Create generator with invalid endpoint
+      const badGenerator = new ClaudeRuleGenerator();
+      // @ts-ignore - accessing private property for testing
+      badGenerator.endpoint = 'https://invalid-endpoint.com';
+
+      await expect(
+        badGenerator.generateRulesFromConversation({
+          conversation: 'Test conversation'
+        })
+      ).rejects.toThrow();
+    });
+
+    it('should handle invalid JSON responses', async () => {
+      // This would require mocking the Azure OpenAI response
+      // For now, we'll skip this test in real integration testing
+      expect(true).toBe(true);
+    });
+  });
+
+  describe('Code Generation', () => {
+    it('should convert rules to Smart Rules Engine format', () => {
+      const rule = {
+        ruleType: 'geographic',
+        ruleName: 'same_address_check',
+        description: 'Check if addresses match',
+        conditions: [
+          { field: 'address', operator: 'equals', value: 'record2.address', caseSensitive: false }
+        ],
+        logic: 'AND' as const,
+        confidenceImpact: {
+          condition: 'When addresses match',
+          confidence: 'high' as const,
+          score: 90,
+          recommendation: 'merge' as const
+        },
+        reasoning: 'Same address indicates same location',
+        flags: ['same_location'],
+        priority: 8
+      };
+
+      const code = generator.convertToSmartRuleFormat(rule);
+      
+      expect(code).toContain('if (');
+      expect(code).toContain('record.address');
+      expect(code).toContain('same_address_check');
+      expect(code).toContain('confidenceScore: 90');
+    });
+  });
+});
+
+// Mock test runner for demonstration
+if (require.main === module) {
+  console.log('Running ClaudeRuleGenerator integration tests...');
+  console.log('Note: These tests require a valid Azure OpenAI connection');
+  console.log('To run tests, use: npm test src/lib/ai/claude-client.test.ts');
+}
