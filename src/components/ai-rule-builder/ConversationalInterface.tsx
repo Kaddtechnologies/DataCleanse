@@ -101,7 +101,18 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
     setIsGenerating(true);
 
     try {
-      // Call API to generate rule
+      console.log('🚀 Sending request to AI API...', {
+        scenario: userMessage.content.substring(0, 100) + '...',
+        existingRules: existingRules.length
+      });
+
+      // Call API to generate rule with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.log('⏰ Request timeout after 60 seconds');
+        controller.abort();
+      }, 60000); // 60 second timeout
+
       const response = await fetch('/api/ai-rules/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -114,22 +125,29 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
           },
           stewardId: 'current-user', // Get from session
           messages: messages
-        })
+        }),
+        signal: controller.signal
       });
 
+      clearTimeout(timeoutId);
+      console.log('📨 Response received:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error('Failed to generate rule');
+        const errorText = await response.text();
+        console.error('❌ API Error:', response.status, errorText);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
+      console.log('📋 API Result:', result);
 
-      // Add AI response
+      // Add AI response - handle both single rule and multiple rules formats
       const aiMessage: ConversationMessage = {
         id: Date.now().toString(),
         sessionId: 'current',
         role: 'assistant',
         type: 'text',
-        content: result.explanation || 'I\'ve generated a rule based on your description. You can review and test it in the code editor.',
+        content: result.summary || result.explanation || 'I\'ve analyzed your scenario and generated business rules. You can review them in the rule editor.',
         timestamp: new Date(),
         metadata: {
           timestamp: new Date().toISOString()
@@ -143,15 +161,65 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
         setCurrentContext(result.context);
       }
 
-      // Pass generated rule to parent
-      if (result.rule && onRuleGenerated) {
+      // Pass generated rules to parent - handle both single rule and multiple rules
+      if (result.rules && result.rules.length > 0 && onRuleGenerated) {
+        console.log('🔄 Converting generated rule to BusinessRule format...');
+        // Convert the first generated rule to BusinessRule format
+        const generatedRule = result.rules[0];
+        const businessRule: BusinessRule = {
+          id: `rule_${Date.now()}`,
+          name: generatedRule.ruleName || 'AI Generated Rule',
+          description: generatedRule.description || generatedRule.reasoning || 'AI generated business rule',
+          category: generatedRule.ruleType || 'business-relationship',
+          priority: generatedRule.priority || 5,
+          enabled: false,
+          version: '1.0.0',
+          createdAt: new Date().toISOString(),
+          createdBy: 'ai-assistant',
+          condition: 'true', // This would be generated from conditions
+          action: {
+            type: 'set-recommendation',
+            parameters: {
+              recommendation: generatedRule.confidenceImpact?.recommendation || 'review',
+              confidence: generatedRule.confidenceImpact?.confidence || 'medium',
+              confidenceScore: generatedRule.confidenceImpact?.score || 0.7
+            }
+          },
+          metadata: {
+            createdBy: 'ai-assistant',
+            createdAt: new Date().toISOString(),
+            approvalStatus: 'draft' as const
+          },
+          tags: generatedRule.flags || []
+        };
+        console.log('✅ BusinessRule created:', businessRule);
+        onRuleGenerated(businessRule);
+      } else if (result.rule && onRuleGenerated) {
+        // Handle single rule format
+        console.log('🔄 Using single rule format');
         onRuleGenerated(result.rule);
+      }
+
+      // If AI has insights, add them as additional messages
+      if (result.insights && result.insights.length > 0) {
+        const insightMessage: ConversationMessage = {
+          id: (Date.now() + 1).toString(),
+          sessionId: 'current',
+          role: 'assistant',
+          type: 'text',
+          content: `Additional insights:\n• ${result.insights.join('\n• ')}`,
+          timestamp: new Date(),
+          metadata: {
+            timestamp: new Date().toISOString()
+          }
+        };
+        setMessages(prev => [...prev, insightMessage]);
       }
 
       // If AI has questions, add them
       if (result.questions && result.questions.length > 0) {
         const questionMessage: ConversationMessage = {
-          id: (Date.now() + 1).toString(),
+          id: (Date.now() + 2).toString(),
           sessionId: 'current',
           role: 'assistant',
           type: 'clarification',

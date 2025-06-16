@@ -2,11 +2,11 @@
 # Azure Container App deployment script for MDM PostgreSQL Database
 
 param(
-    [Parameter(Mandatory=$false)]
-    [string]$ResourceGroup = "",
+    [Parameter(Mandatory=$true)]
+    [string]$ResourceGroup = "pottersailearning",
 
-    [Parameter(Mandatory=$false)]
-    [string]$RegistryName = "containerregistry",
+    [Parameter(Mandatory=$true)]
+    [string]$RegistryName = "kaddacontainerregistry",
 
     [Parameter(Mandatory=$false)]
     [string]$ContainerAppName = "mdm-postgres",
@@ -38,7 +38,10 @@ param(
     [Parameter(Mandatory=$false)]
     [switch]$CreateFileShare = $true,
     
-    # Service Principal Authentication (for hands-off deployment)
+    [Parameter(Mandatory=$false)]
+    [switch]$ForceRestart,
+    
+    # Service Principal Authentication (for automated deployment without MFA)
     [Parameter(Mandatory=$false)]
     [string]$ServicePrincipalId = [Environment]::GetEnvironmentVariable("AZURE_CLIENT_ID"),
     
@@ -52,10 +55,7 @@ param(
     [string]$SubscriptionId = [Environment]::GetEnvironmentVariable("AZURE_SUBSCRIPTION_ID"),
     
     [Parameter(Mandatory=$false)]
-    [switch]$UseServicePrincipal = $false,
-    
-    [Parameter(Mandatory=$false)]
-    [switch]$SkipLogin = $false
+    [switch]$UseServicePrincipal = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -64,7 +64,8 @@ $PostgresImageName = "$ContainerAppName"
 $RedisImageName = "$RedisContainerAppName"
 $FullImageTag = "$CurrentDate-$ImageTag"
 
-Write-Host "Deploying MDM PostgreSQL Database to Azure Container Apps..." -ForegroundColor Cyan
+Write-Host "Building and deploying MDM PostgreSQL Database to Azure Container Apps..." -ForegroundColor Cyan
+Write-Host "Using image tag: $FullImageTag" -ForegroundColor Cyan
 
 # 1. Check if Azure CLI is installed
 try {
@@ -80,22 +81,30 @@ catch {
 # Auto-detect service principal from environment variables
 if ($ServicePrincipalId -and $ServicePrincipalSecret -and $TenantId) {
     $UseServicePrincipal = $true
+    Write-Host "Service principal credentials detected in environment variables" -ForegroundColor Green
 }
 
 if ($UseServicePrincipal) {
-    Write-Host "Using Service Principal authentication..." -ForegroundColor Cyan
+    Write-Host "Using Service Principal authentication to bypass MFA..." -ForegroundColor Cyan
     
     if (-not $ServicePrincipalId -or -not $ServicePrincipalSecret -or -not $TenantId) {
         Write-Host "ERROR: Service Principal authentication requires AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, and AZURE_TENANT_ID" -ForegroundColor Red
-        Write-Host "Set these environment variables or pass them as parameters" -ForegroundColor Yellow
+        Write-Host "Either set these environment variables or run ./setup-service-principal.ps1 to create them" -ForegroundColor Yellow
+        Write-Host "" -ForegroundColor White
+        Write-Host "To set environment variables in PowerShell:" -ForegroundColor Yellow
+        Write-Host "`$env:AZURE_CLIENT_ID='your-client-id'" -ForegroundColor Cyan
+        Write-Host "`$env:AZURE_CLIENT_SECRET='your-client-secret'" -ForegroundColor Cyan
+        Write-Host "`$env:AZURE_TENANT_ID='your-tenant-id'" -ForegroundColor Cyan
+        Write-Host "`$env:AZURE_SUBSCRIPTION_ID='your-subscription-id'" -ForegroundColor Cyan
         exit 1
     }
     
     # Login with service principal (this bypasses MFA)
-    Write-Host "Logging in with service principal (bypasses MFA)..." -ForegroundColor Cyan
+    Write-Host "Logging in with service principal (bypasses MFA requirements)..." -ForegroundColor Cyan
     az login --service-principal --username $ServicePrincipalId --password $ServicePrincipalSecret --tenant $TenantId --output none
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Failed to login with service principal" -ForegroundColor Red
+        Write-Host "Please verify your service principal credentials or create a new one with ./setup-service-principal.ps1" -ForegroundColor Yellow
         exit 1
     }
     
@@ -111,26 +120,32 @@ if ($UseServicePrincipal) {
     $account = az account show | ConvertFrom-Json
     Write-Host "Successfully authenticated with service principal" -ForegroundColor Green
     Write-Host "Active subscription: $($account.name) ($($account.id))" -ForegroundColor Green
-} elseif (-not $SkipLogin) {
-    # Check existing login status
+} else {
+    # Check existing user login status
+    Write-Host "Checking Azure login status..." -ForegroundColor Cyan
     try {
-        $account = az account show 2>$null | ConvertFrom-Json
-        if ($account) {
-            Write-Host "Already logged in to Azure as: $($account.user.name)" -ForegroundColor Green
-        } else {
-            throw "Not logged in"
-        }
+        $account = az account show | ConvertFrom-Json
+        Write-Host "Logged in to Azure as: $($account.user.name)" -ForegroundColor Green
     }
     catch {
-        Write-Host "ERROR: Not logged in to Azure and no service principal provided" -ForegroundColor Red
-        Write-Host "Solutions:" -ForegroundColor Yellow
-        Write-Host "1. Create service principal: ./setup-service-principal.ps1" -ForegroundColor Yellow
-        Write-Host "2. Set environment variables and use -UseServicePrincipal" -ForegroundColor Yellow
-        Write-Host "3. Run 'az login' first, then use -SkipLogin" -ForegroundColor Yellow
+        Write-Host "Not logged in to Azure." -ForegroundColor Red
+        Write-Host "" -ForegroundColor White
+        Write-Host "Due to Microsoft's mandatory MFA requirements, user accounts can no longer be used for automation." -ForegroundColor Yellow
+        Write-Host "Please use one of these solutions:" -ForegroundColor Yellow
+        Write-Host "" -ForegroundColor White
+        Write-Host "Option 1 (Recommended): Create a Service Principal" -ForegroundColor Cyan
+        Write-Host "  1. Run: ./setup-service-principal.ps1" -ForegroundColor White
+        Write-Host "  2. Set the environment variables it provides" -ForegroundColor White
+        Write-Host "  3. Re-run this script with -UseServicePrincipal flag" -ForegroundColor White
+        Write-Host "" -ForegroundColor White
+        Write-Host "Option 2: Manual login (may require MFA interaction)" -ForegroundColor Cyan
+        Write-Host "  1. Run: az login" -ForegroundColor White
+        Write-Host "  2. Complete MFA authentication in browser" -ForegroundColor White
+        Write-Host "  3. Re-run this script" -ForegroundColor White
+        Write-Host "" -ForegroundColor White
+        Write-Host "For more information, see: https://learn.microsoft.com/en-us/powershell/azure/authenticate-mfa" -ForegroundColor Blue
         exit 1
     }
-} else {
-    Write-Host "Skipping login check (assuming already authenticated)" -ForegroundColor Yellow
 }
 
 # 3. Login to Azure Container Registry
@@ -192,7 +207,7 @@ Write-Host "Created Dockerfile.postgres" -ForegroundColor Green
 # 5. Build PostgreSQL Docker image
 $fullPostgresImageName = "${acrLoginServer}/${PostgresImageName}:${FullImageTag}"
 Write-Host "Building PostgreSQL Docker image: $fullPostgresImageName" -ForegroundColor Cyan
-docker build -f Dockerfile.postgres -t $fullPostgresImageName .
+docker build --no-cache -f Dockerfile.postgres -t $fullPostgresImageName .
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to build PostgreSQL Docker image" -ForegroundColor Red
     exit 1
@@ -230,7 +245,7 @@ CMD ["redis-server", "--appendonly", "yes"]
     # Build Redis Docker image
     $fullRedisImageName = "${acrLoginServer}/${RedisImageName}:${FullImageTag}"
     Write-Host "Building Redis Docker image: $fullRedisImageName" -ForegroundColor Cyan
-    docker build -f Dockerfile.redis -t $fullRedisImageName .
+    docker build --no-cache -f Dockerfile.redis -t $fullRedisImageName .
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Failed to build Redis Docker image" -ForegroundColor Red
         exit 1
@@ -269,6 +284,8 @@ if ($null -eq $envExists -or $envExists.Count -eq 0) {
 }
 
 # 9. Create Azure File Share for persistent storage (if requested)
+$storageAccountName = ""
+$storageKey = ""
 if ($CreateFileShare) {
     Write-Host "Creating Azure File Share for persistent storage..." -ForegroundColor Cyan
     
@@ -300,8 +317,10 @@ if ($CreateFileShare) {
     Write-Host "Successfully created file shares" -ForegroundColor Green
 }
 
-# 10. Set up database secrets
-Write-Host "Setting up database secrets..." -ForegroundColor Cyan
+# 10. Deploy PostgreSQL Container App
+Write-Host "Deploying PostgreSQL Container App..." -ForegroundColor Cyan
+
+# Set up database secrets
 $secrets = @(
     "postgres-password=$DbPassword",
     "postgres-user=$DbUser",
@@ -312,52 +331,49 @@ if ($CreateFileShare) {
     $secrets += "storage-account-key=$storageKey"
 }
 
-# 11. Check if PostgreSQL Container App exists and create or update it
-$postgresAppExists = $false
-try {
-    $appCheck = az containerapp show --name $ContainerAppName --resource-group $ResourceGroup 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $postgresAppExists = $true
-    }
-} catch {
-    $postgresAppExists = $false
-}
-
 # Environment variables for PostgreSQL
 $postgresEnvVars = @(
     "POSTGRES_DB=secretref:postgres-db",
     "POSTGRES_USER=secretref:postgres-user", 
     "POSTGRES_PASSWORD=secretref:postgres-password",
     "POSTGRES_INITDB_ARGS=--encoding=UTF8",
-    "PGPORT=$DbPort"
+    "PGPORT=$DbPort",
+    "BUILD_TIMESTAMP=$CurrentDate"
 )
 
-if (-not $postgresAppExists) {
+$containerAppExists = az containerapp show --name $ContainerAppName --resource-group $ResourceGroup 2>&1
+if ($LASTEXITCODE -ne 0) {
     Write-Host "Creating new PostgreSQL Container App..." -ForegroundColor Cyan
     
-    $createCmd = "az containerapp create " +
-        "--name $ContainerAppName " +
-        "--resource-group $ResourceGroup " +
-        "--environment $envName " +
-        "--registry-server $acrLoginServer " +
-        "--registry-username $acrUsername " +
-        "--registry-password $acrPassword " +
-        "--image $fullPostgresImageName " +
-        "--target-port $DbPort " +
-        "--ingress internal " +
-        "--cpu 2.0 " +
-        "--memory 4.0Gi " +
-        "--min-replicas 1 " +
-        "--max-replicas 1 " +
-        "--secrets `"$($secrets -join ' ')`" " +
-        "--env-vars `"$($postgresEnvVars -join ' ')`""
+    $createArgs = @(
+        "az", "containerapp", "create",
+        "--name", $ContainerAppName,
+        "--resource-group", $ResourceGroup,
+        "--environment", $envName,
+        "--registry-server", $acrLoginServer,
+        "--registry-username", $acrUsername,
+        "--registry-password", $acrPassword,
+        "--image", $fullPostgresImageName,
+        "--target-port", $DbPort,
+        "--ingress", "internal",
+        "--cpu", "2.0",
+        "--memory", "4.0Gi",
+        "--min-replicas", "1",
+        "--max-replicas", "1",
+        "--secrets", ($secrets -join ' '),
+        "--env-vars", ($postgresEnvVars -join ' ')
+    )
     
     # Add volume mounts if file share was created
     if ($CreateFileShare) {
-        $createCmd += " --azure-file-volume-name postgres-data --azure-file-share-name postgres-data --azure-file-account-name $storageAccountName --azure-file-account-key secretref:storage-account-key --azure-file-access-mode ReadWrite"
+        $createArgs += "--azure-file-volume-name", "postgres-data"
+        $createArgs += "--azure-file-share-name", "postgres-data"
+        $createArgs += "--azure-file-account-name", $storageAccountName
+        $createArgs += "--azure-file-account-key", "secretref:storage-account-key"
+        $createArgs += "--azure-file-access-mode", "ReadWrite"
     }
     
-    Invoke-Expression $createCmd
+    & $createArgs[0] $createArgs[1..($createArgs.Length-1)]
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Failed to create PostgreSQL Container App" -ForegroundColor Red
@@ -367,11 +383,13 @@ if (-not $postgresAppExists) {
 } else {
     Write-Host "Updating existing PostgreSQL Container App..." -ForegroundColor Cyan
 
-    # Update the container app's image
+    # Update the container app's image with active revision mode to force new revision
     az containerapp update `
         --name $ContainerAppName `
         --resource-group $ResourceGroup `
-        --image $fullPostgresImageName
+        --image $fullPostgresImageName `
+        --revision-suffix "rev-$CurrentDate" `
+        --env-vars ($postgresEnvVars -join ' ')
 
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Failed to update PostgreSQL Container App image" -ForegroundColor Red
@@ -386,65 +404,96 @@ if (-not $postgresAppExists) {
         --username $acrUsername `
         --password $acrPassword
 
-    # Update secrets and environment variables
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to update registry credentials" -ForegroundColor Yellow
+    }
+
+    # Update secrets
     az containerapp secret set `
         --name $ContainerAppName `
         --resource-group $ResourceGroup `
-        --secrets $($secrets -join ' ')
+        --secrets ($secrets -join ' ')
 
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to update secrets" -ForegroundColor Yellow
+    }
+
+    # Set CPU and memory
     az containerapp update `
         --name $ContainerAppName `
         --resource-group $ResourceGroup `
-        --set-env-vars $($postgresEnvVars -join ' ')
+        --cpu 2.0 `
+        --memory 4.0Gi
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to update CPU and memory" -ForegroundColor Yellow
+    }
+
+    # Force a restart if requested
+    if ($ForceRestart) {
+        Write-Host "Forcing PostgreSQL container app restart..." -ForegroundColor Cyan
+        # Get the latest revision name
+        $latestRevision = az containerapp revision list --name $ContainerAppName --resource-group $ResourceGroup --query "[-1].name" -o tsv
+
+        # Restart the revision
+        az containerapp revision restart --name $ContainerAppName --resource-group $ResourceGroup --revision $latestRevision
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Warning: Failed to restart PostgreSQL container app" -ForegroundColor Yellow
+        } else {
+            Write-Host "Successfully restarted PostgreSQL container app" -ForegroundColor Green
+        }
+    }
 
     Write-Host "Successfully updated PostgreSQL Container App" -ForegroundColor Green
 }
 
-# 12. Deploy Redis if requested
+# 11. Deploy Redis if requested
 if ($DeployRedis) {
     Write-Host "Deploying Redis Container App..." -ForegroundColor Cyan
     
-    $redisAppExists = $false
-    try {
-        $redisAppCheck = az containerapp show --name $RedisContainerAppName --resource-group $ResourceGroup 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $redisAppExists = $true
-        }
-    } catch {
-        $redisAppExists = $false
-    }
-
-    $redisEnvVars = @("REDIS_APPENDONLY=yes")
+    $redisEnvVars = @(
+        "REDIS_APPENDONLY=yes",
+        "BUILD_TIMESTAMP=$CurrentDate"
+    )
     $redisSecrets = @()
     
     if ($CreateFileShare) {
         $redisSecrets += "storage-account-key=$storageKey"
     }
 
-    if (-not $redisAppExists) {
+    $redisAppExists = az containerapp show --name $RedisContainerAppName --resource-group $ResourceGroup 2>&1
+    if ($LASTEXITCODE -ne 0) {
         Write-Host "Creating new Redis Container App..." -ForegroundColor Cyan
         
-        $redisCreateCmd = "az containerapp create " +
-            "--name $RedisContainerAppName " +
-            "--resource-group $ResourceGroup " +
-            "--environment $envName " +
-            "--registry-server $acrLoginServer " +
-            "--registry-username $acrUsername " +
-            "--registry-password $acrPassword " +
-            "--image $fullRedisImageName " +
-            "--target-port 6379 " +
-            "--ingress internal " +
-            "--cpu 1.0 " +
-            "--memory 2.0Gi " +
-            "--min-replicas 1 " +
-            "--max-replicas 1 " +
-            "--env-vars `"$($redisEnvVars -join ' ')`""
+        $redisCreateArgs = @(
+            "az", "containerapp", "create",
+            "--name", $RedisContainerAppName,
+            "--resource-group", $ResourceGroup,
+            "--environment", $envName,
+            "--registry-server", $acrLoginServer,
+            "--registry-username", $acrUsername,
+            "--registry-password", $acrPassword,
+            "--image", $fullRedisImageName,
+            "--target-port", "6379",
+            "--ingress", "internal",
+            "--cpu", "1.0",
+            "--memory", "2.0Gi",
+            "--min-replicas", "1",
+            "--max-replicas", "1",
+            "--env-vars", ($redisEnvVars -join ' ')
+        )
         
         if ($CreateFileShare -and $redisSecrets.Count -gt 0) {
-            $redisCreateCmd += " --secrets `"$($redisSecrets -join ' ')`" --azure-file-volume-name redis-data --azure-file-share-name redis-data --azure-file-account-name $storageAccountName --azure-file-account-key secretref:storage-account-key --azure-file-access-mode ReadWrite"
+            $redisCreateArgs += "--secrets", ($redisSecrets -join ' ')
+            $redisCreateArgs += "--azure-file-volume-name", "redis-data"
+            $redisCreateArgs += "--azure-file-share-name", "redis-data"
+            $redisCreateArgs += "--azure-file-account-name", $storageAccountName
+            $redisCreateArgs += "--azure-file-account-key", "secretref:storage-account-key"
+            $redisCreateArgs += "--azure-file-access-mode", "ReadWrite"
         }
         
-        Invoke-Expression $redisCreateCmd
+        & $redisCreateArgs[0] $redisCreateArgs[1..($redisCreateArgs.Length-1)]
         
         if ($LASTEXITCODE -ne 0) {
             Write-Host "Failed to create Redis Container App" -ForegroundColor Red
@@ -454,21 +503,108 @@ if ($DeployRedis) {
     } else {
         Write-Host "Updating existing Redis Container App..." -ForegroundColor Cyan
         
+        # Update the container app's image with active revision mode to force new revision
         az containerapp update `
             --name $RedisContainerAppName `
             --resource-group $ResourceGroup `
-            --image $fullRedisImageName
+            --image $fullRedisImageName `
+            --revision-suffix "rev-$CurrentDate" `
+            --env-vars ($redisEnvVars -join ' ')
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Failed to update Redis Container App image" -ForegroundColor Red
+            exit 1
+        }
+
+        # Update registry credentials
+        az containerapp registry set `
+            --name $RedisContainerAppName `
+            --resource-group $ResourceGroup `
+            --server $acrLoginServer `
+            --username $acrUsername `
+            --password $acrPassword
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Warning: Failed to update Redis registry credentials" -ForegroundColor Yellow
+        }
+
+        # Set CPU and memory
+        az containerapp update `
+            --name $RedisContainerAppName `
+            --resource-group $ResourceGroup `
+            --cpu 1.0 `
+            --memory 2.0Gi
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Warning: Failed to update Redis CPU and memory" -ForegroundColor Yellow
+        }
+
+        # Force a restart if requested
+        if ($ForceRestart) {
+            Write-Host "Forcing Redis container app restart..." -ForegroundColor Cyan
+            # Get the latest revision name
+            $latestRedisRevision = az containerapp revision list --name $RedisContainerAppName --resource-group $ResourceGroup --query "[-1].name" -o tsv
+
+            # Restart the revision
+            az containerapp revision restart --name $RedisContainerAppName --resource-group $ResourceGroup --revision $latestRedisRevision
+
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Warning: Failed to restart Redis container app" -ForegroundColor Yellow
+            } else {
+                Write-Host "Successfully restarted Redis container app" -ForegroundColor Green
+            }
+        }
 
         Write-Host "Successfully updated Redis Container App" -ForegroundColor Green
     }
 }
 
-# 13. Get connection information
+# 12. Get connection information
 Write-Host "Getting connection information..." -ForegroundColor Cyan
 $postgresFqdn = az containerapp show --name $ContainerAppName --resource-group $ResourceGroup --query "properties.configuration.ingress.fqdn" -o tsv
 
+$redisFqdn = ""
 if ($DeployRedis) {
     $redisFqdn = az containerapp show --name $RedisContainerAppName --resource-group $ResourceGroup --query "properties.configuration.ingress.fqdn" -o tsv
+}
+
+# 13. Verify deployment
+Write-Host "Verifying deployment..." -ForegroundColor Cyan
+Write-Host "Waiting 30 seconds for the deployment to stabilize..." -ForegroundColor Yellow
+Start-Sleep -Seconds 30
+
+Write-Host "Checking PostgreSQL container status..." -ForegroundColor Cyan
+try {
+    $postgresRevisions = az containerapp revision list --name $ContainerAppName --resource-group $ResourceGroup | ConvertFrom-Json
+    $latestPostgresRevision = $postgresRevisions | Sort-Object createdTime -Descending | Select-Object -First 1
+    
+    if ($latestPostgresRevision.properties.provisioningState -eq "Provisioned" -and $latestPostgresRevision.properties.active) {
+        Write-Host "✅ PostgreSQL deployment verified: Latest revision is active and provisioned!" -ForegroundColor Green
+        Write-Host "PostgreSQL revision: $($latestPostgresRevision.name)" -ForegroundColor Green
+    } else {
+        Write-Host "⚠️ PostgreSQL verification warning: Revision state may not be fully ready" -ForegroundColor Yellow
+        Write-Host "State: $($latestPostgresRevision.properties.provisioningState), Active: $($latestPostgresRevision.properties.active)" -ForegroundColor Yellow
+    }
+} catch {
+    Write-Host "⚠️ Could not verify PostgreSQL deployment: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+if ($DeployRedis) {
+    Write-Host "Checking Redis container status..." -ForegroundColor Cyan
+    try {
+        $redisRevisions = az containerapp revision list --name $RedisContainerAppName --resource-group $ResourceGroup | ConvertFrom-Json
+        $latestRedisRevision = $redisRevisions | Sort-Object createdTime -Descending | Select-Object -First 1
+        
+        if ($latestRedisRevision.properties.provisioningState -eq "Provisioned" -and $latestRedisRevision.properties.active) {
+            Write-Host "✅ Redis deployment verified: Latest revision is active and provisioned!" -ForegroundColor Green
+            Write-Host "Redis revision: $($latestRedisRevision.name)" -ForegroundColor Green
+        } else {
+            Write-Host "⚠️ Redis verification warning: Revision state may not be fully ready" -ForegroundColor Yellow
+            Write-Host "State: $($latestRedisRevision.properties.provisioningState), Active: $($latestRedisRevision.properties.active)" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "⚠️ Could not verify Redis deployment: $($_.Exception.Message)" -ForegroundColor Yellow
+    }
 }
 
 # 14. Display deployment results
@@ -520,10 +656,13 @@ Write-Host "3. Test the database connection from your application" -ForegroundCo
 Write-Host "4. Consider setting up backup and monitoring for production use" -ForegroundColor White
 
 # 15. Clean up temporary files
+Write-Host "Cleaning up temporary files..." -ForegroundColor Cyan
 Remove-Item -Path "Dockerfile.postgres" -Force -ErrorAction SilentlyContinue
 if ($DeployRedis) {
     Remove-Item -Path "Dockerfile.redis" -Force -ErrorAction SilentlyContinue
 }
+Write-Host "Successfully cleaned up temporary files" -ForegroundColor Green
 
 Write-Host "" -ForegroundColor White
 Write-Host "Database deployment completed successfully!" -ForegroundColor Green
+Write-Host "If you need to force a restart in the future, run this script with the -ForceRestart flag" -ForegroundColor Cyan

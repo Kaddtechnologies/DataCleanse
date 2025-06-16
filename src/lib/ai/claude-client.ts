@@ -1,8 +1,9 @@
 /**
  * AI-powered Business Rules Generator
- * Uses Azure OpenAI for intelligent rule creation, testing, and improvement
+ * Uses Anthropic Claude for intelligent rule creation, testing, and improvement
  */
 
+import Anthropic from '@anthropic-ai/sdk';
 import { serverConfig } from '@/config/environment';
 import { 
   createRuleGenerationPrompt, 
@@ -84,18 +85,23 @@ interface AzureOpenAIResponse {
 }
 
 export class ClaudeRuleGenerator {
-  private endpoint: string;
-  private apiKey: string;
-  private deployment: string;
-  private apiVersion: string;
+  private anthropic: Anthropic;
   private maxRetries: number = 3;
   private retryDelay: number = 1000; // 1 second
 
   constructor() {
-    this.endpoint = serverConfig.azureOpenAi.endpoint;
-    this.apiKey = serverConfig.azureOpenAi.apiKey;
-    this.deployment = serverConfig.azureOpenAi.deploymentName;
-    this.apiVersion = serverConfig.azureOpenAi.apiVersion;
+    console.log('🔧 Initializing Anthropic client...');
+    // Don't throw error in constructor - defer to method calls
+    this.anthropic = new Anthropic({
+      apiKey: serverConfig.anthropicApiKey || 'placeholder',
+    });
+    console.log('✅ Anthropic client initialized');
+  }
+
+  private validateApiKey(): void {
+    if (!serverConfig.anthropicApiKey) {
+      throw new Error('ANTHROPIC_API_KEY is required for Claude AI integration. Please set the ANTHROPIC_API_KEY environment variable.');
+    }
   }
 
   /**
@@ -106,6 +112,10 @@ export class ClaudeRuleGenerator {
     summary: string;
     insights: string[];
   }> {
+    console.log('🔑 Validating API key...');
+    this.validateApiKey();
+    console.log('✅ API key validated');
+    
     const prompt = createRuleGenerationPrompt(context);
     
     try {
@@ -213,65 +223,41 @@ export class ClaudeRuleGenerator {
   }
 
   /**
-   * Call Azure OpenAI API with retry logic
+   * Call Anthropic Claude API with retry logic
    */
   private async callAzureOpenAI(prompt: string, retryCount: number = 0): Promise<string> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
+    console.log('🤖 Calling Anthropic Claude API...');
+    
     try {
-      const response = await fetch(
-        `${this.endpoint}/openai/deployments/${this.deployment}/chat/completions?api-version=${this.apiVersion}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'api-key': this.apiKey,
-          },
-          body: JSON.stringify({
-            messages: [
-              {
-                role: 'system',
-                content: 'You are an AI assistant specializing in business rules for Master Data Management. Always respond with valid JSON that matches the requested format exactly.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.3,
-            max_tokens: 2000,
-            response_format: { type: 'json_object' }
-          }),
-          signal: controller.signal
-        }
-      );
+      const message = await this.anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 2000,
+        temperature: 0.3,
+        system: 'You are an AI assistant specializing in business rules for Master Data Management. Always respond with valid JSON that matches the requested format exactly.',
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      });
 
-      clearTimeout(timeout);
+      console.log('✅ Received response from Claude');
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Azure OpenAI error: ${response.status} - ${errorText}`);
+      if (message.content && message.content.length > 0 && message.content[0].type === 'text') {
+        return message.content[0].text;
       }
 
-      const data: AzureOpenAIResponse = await response.json();
-      
-      if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
-        throw new Error('Invalid response structure from Azure OpenAI');
-      }
-
-      return data.choices[0].message.content;
+      throw new Error('Invalid response structure from Claude');
     } catch (error) {
-      clearTimeout(timeout);
-
+      console.error('❌ Claude API error:', error);
+      
       // Handle retryable errors
       if (retryCount < this.maxRetries && this.isRetryableError(error)) {
-        console.log(`Retrying Azure OpenAI call (attempt ${retryCount + 1}/${this.maxRetries})...`);
+        console.log(`🔄 Retrying Claude call (attempt ${retryCount + 1}/${this.maxRetries})...`);
         await this.delay(this.retryDelay * (retryCount + 1)); // Exponential backoff
         return this.callAzureOpenAI(prompt, retryCount + 1);
       }
 
-      throw error;
+      throw new Error(`Failed to call Claude API: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
