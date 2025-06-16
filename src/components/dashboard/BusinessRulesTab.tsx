@@ -31,7 +31,8 @@ export function BusinessRulesTab() {
     total: 0,
     active: 0,
     draft: 0,
-    testing: 0
+    testing: 0,
+    pending_approval: 0
   });
   const { toast } = useToast();
 
@@ -44,19 +45,46 @@ export function BusinessRulesTab() {
       const response = await fetch('/api/rules/list');
       if (response.ok) {
         const data = await response.json();
-        setExistingRules(data.rules || []);
+        const rules = data.rules || [];
+        
+        // Map database fields to component interface
+        const mappedRules = rules.map((rule: any) => ({
+          ...rule,
+          category: rule.rule_type || rule.category || 'custom',
+          // Convert database fields to expected format
+          action: rule.actions ? rule.actions[0] : {
+            type: 'set-recommendation',
+            parameters: { recommendation: 'review', confidence: 'medium' }
+          },
+          condition: rule.conditions || 'true',
+          tags: rule.metadata?.flags || [],
+          metadata: {
+            ...rule.metadata,
+            createdBy: rule.author,
+            createdAt: rule.created_at,
+            approvalStatus: rule.status === 'active' ? 'approved' : 'draft'
+          }
+        }));
+        
+        setExistingRules(mappedRules);
         
         // Calculate stats
         const stats = {
-          total: data.rules.length,
-          active: data.rules.filter((r: any) => r.status === 'active').length,
-          draft: data.rules.filter((r: any) => r.status === 'draft').length,
-          testing: data.rules.filter((r: any) => r.status === 'testing').length
+          total: rules.length,
+          active: rules.filter((r: any) => r.status === 'active').length,
+          draft: rules.filter((r: any) => r.status === 'draft').length,
+          testing: rules.filter((r: any) => r.status === 'testing').length,
+          pending_approval: rules.filter((r: any) => r.status === 'pending_approval').length
         };
         setRuleStats(stats);
       }
     } catch (error) {
       console.error('Error loading rules:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load rules from the database.",
+        variant: "destructive"
+      });
     }
   };
 
@@ -101,6 +129,35 @@ export function BusinessRulesTab() {
     loadRules(); // Refresh after deployment
   };
 
+  const handleSubmitForApproval = async (rule: BusinessRule) => {
+    try {
+      const response = await fetch(`/api/rules/${rule.id}/submit-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submittedBy: 'Current User', // This would come from auth
+          reason: 'Rule ready for manager review and production deployment'
+        })
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Submitted for approval",
+          description: "Rule has been submitted to manager for approval."
+        });
+        loadRules(); // Refresh the list
+      } else {
+        throw new Error('Failed to submit for approval');
+      }
+    } catch (error) {
+      toast({
+        title: "Submission failed",
+        description: "Failed to submit rule for approval.",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header Section */}
@@ -137,7 +194,7 @@ export function BusinessRulesTab() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -179,6 +236,17 @@ export function BusinessRulesTab() {
                 <p className="text-2xl font-bold text-blue-600">{ruleStats.testing}</p>
               </div>
               <AlertCircle className="w-8 h-8 text-blue-600 opacity-20" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Pending Approval</p>
+                <p className="text-2xl font-bold text-orange-600">{ruleStats.pending_approval}</p>
+              </div>
+              <Clock className="w-8 h-8 text-orange-600 opacity-20" />
             </div>
           </CardContent>
         </Card>
@@ -232,44 +300,183 @@ export function BusinessRulesTab() {
       )}
 
       {activeView === 'library' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Rule Library</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {existingRules.map((rule) => (
-                <div key={rule.id} className="p-4 border rounded-lg flex items-center justify-between">
-                  <div>
-                    <h4 className="font-medium">{rule.name}</h4>
-                    <p className="text-sm text-muted-foreground">{rule.description}</p>
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant="secondary">{rule.category}</Badge>
-                      <Badge 
-                        variant={rule.enabled ? 'default' : 'outline'}
-                        className={rule.enabled ? 'bg-green-500 hover:bg-green-600' : ''}
-                      >
-                        {rule.status || (rule.enabled ? 'Active' : 'Inactive')}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCurrentRule(rule)}
-                  >
-                    View
-                  </Button>
-                </div>
-              ))}
-              {existingRules.length === 0 && (
-                <p className="text-center text-muted-foreground py-8">
-                  No rules created yet. Start by creating your first rule.
-                </p>
-              )}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold">Rule Library</h3>
+              <p className="text-sm text-muted-foreground">
+                Browse and manage your business rules collection
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <Button onClick={() => setActiveView('create')}>
+              <Plus className="w-4 h-4 mr-2" />
+              Create New Rule
+            </Button>
+          </div>
+          
+          {existingRules.length === 0 ? (
+            <Card>
+              <CardContent className="text-center py-16">
+                <Library className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-20" />
+                <h3 className="text-lg font-medium mb-2">No rules found</h3>
+                <p className="text-muted-foreground mb-4">
+                  Get started by creating your first business rule using AI assistance
+                </p>
+                <Button onClick={() => setActiveView('create')}>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Create First Rule
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {existingRules.map((rule) => (
+                <Card 
+                  key={rule.id} 
+                  className="group hover:shadow-lg transition-all duration-200 border hover:border-blue-200 dark:hover:border-blue-700 cursor-pointer"
+                  onClick={() => {
+                    // Navigate to the business rules page for this specific rule
+                    window.open(`/rules-sandbox/library?rule=${rule.id}`, '_blank');
+                  }}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-base mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {rule.name}
+                        </CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge 
+                            variant={rule.enabled ? 'default' : 'secondary'}
+                            className={rule.enabled ? 'bg-green-500 hover:bg-green-600 text-white' : ''}
+                          >
+                            {rule.status || (rule.enabled ? 'Active' : 'Draft')}
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {rule.rule_type || rule.category || 'Custom'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                          {rule.accuracy ? `${rule.accuracy}%` : 'N/A'}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Accuracy</div>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {rule.description}
+                    </p>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Executions</div>
+                        <div className="font-medium">{rule.execution_count || 0}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wide">Avg Time</div>
+                        <div className="font-medium">{rule.avg_execution_time ? `${rule.avg_execution_time}ms` : 'N/A'}</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-2 border-t">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <Clock className="w-3 h-3" />
+                        <span>v{rule.version || '1.0.0'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        {rule.ai_generated && (
+                          <div className="flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-purple-500" />
+                            <span>AI Generated</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      {rule.status === 'draft' ? (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentRule(rule);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            className="flex-1 bg-orange-600 hover:bg-orange-700"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSubmitForApproval(rule);
+                            }}
+                          >
+                            Submit for Approval
+                          </Button>
+                        </>
+                      ) : rule.status === 'pending_approval' ? (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open('/rules-sandbox/approvals', '_blank');
+                            }}
+                          >
+                            View Approval
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/rules-sandbox/library?rule=${rule.id}`, '_blank');
+                            }}
+                          >
+                            View Details
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setCurrentRule(rule);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            className="flex-1"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/rules-sandbox/library?rule=${rule.id}`, '_blank');
+                            }}
+                          >
+                            View Details
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {activeView === 'metrics' && (

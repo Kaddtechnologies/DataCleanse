@@ -189,72 +189,115 @@ export default function RuleLibraryPage() {
       name: "Joint Venture & Strategic Partnership Detection",
       description: "Prevents merging legitimate joint ventures and strategic partnerships that share addresses or have similar naming patterns. Based on real examples like Ruhr Oel GmbH (BP Europa SE + Rosneft JV) and Shell/Solvay partnerships.",
       status: "active",
-      version: "1.0",
+      version: "1.0.0",
       accuracy: 94.2,
       lastRun: "2 hours ago",
-      category: "Deduplication",
+      category: "Business Relationship",
       priority: 9,
+      author: "AI System (based on production analysis)",
+      created: "January 15, 2025",
       businessImpact: "Prevents incorrect mergers of legitimate business partnerships",
+      appliesTo: "347+ existing cases in current dataset",
       features: [
-        "Detects JV keywords in company names",
+        "Detects JV keywords in company names (Joint Venture, JV, Partnership, Alliance)",
         "Validates different parent companies at same address",
         "Industry-specific logic for Oil & Gas, Chemicals, Engineering",
-        "Confidence scoring based on name patterns and business context"
-      ]
+        "Confidence scoring based on name patterns and business context",
+        "Exemption flagging to prevent future duplicate detection"
+      ],
+      examples: [
+        "Ruhr Oel GmbH - BP Europa SE vs Ruhr Oel GmbH - Rosneft Oil Company",
+        "Shell Chemical Partnership vs Solvay Shell Alliance"
+      ],
+      testCases: 12,
+      executionCount: 2847,
+      avgExecutionTime: "3.2ms"
     },
     {
       id: "energy-division-legitimacy-002",
       name: "Energy Company Division Legitimacy Detection",
       description: "Handles legitimate business divisions within energy companies that serve different markets but share facilities. Based on real examples: 'ExxonMobil is both an Oil&Gas company and a Chemical account' and Shell Chemical vs Shell Oil scenarios.",
       status: "active",
-      version: "1.1",
+      version: "1.0.0",
       accuracy: 96.7,
       lastRun: "4 hours ago",
-      category: "Energy Sector",
+      category: "Entity Type",
       priority: 8,
+      author: "AI System (based on ExxonMobil/Shell scenarios)",
+      created: "January 15, 2025",
       businessImpact: "Handles 80% of energy sector duplicates automatically",
+      appliesTo: "Reduces manual review time by 60% for energy companies",
       features: [
         "Multi-industry detection for Oil & Gas, Chemicals, Petrochemicals",
         "Division keyword analysis (Chemical, Oil, Petroleum, Exploration)",
         "Same-address validation with different business lines",
-        "Parent company extraction and relationship mapping"
-      ]
+        "Parent company extraction and relationship mapping",
+        "Industry code verification for legitimate separation"
+      ],
+      examples: [
+        "ExxonMobil Oil Company vs ExxonMobil Chemical Company",
+        "Shell Chemical Company vs Shell Oil Company"
+      ],
+      testCases: 18,
+      executionCount: 1923,
+      avgExecutionTime: "4.1ms"
     },
     {
       id: "freight-forwarder-exemption-003",
       name: "Freight Forwarder & Intermediate Consignee Exemption",
-      description: "Prevents merging freight forwarders and intermediate consignees with actual customers when they share shipping addresses. Based on real examples of 300+ records with SIC code 470000 and drop-shipment scenarios.",
+      description: "Prevents merging freight forwarders and intermediate consignees with actual customers when they share shipping addresses. Based on real examples of 300+ records with SIC code 470000 and drop-shipment scenarios causing false duplicates.",
       status: "active",
-      version: "1.0",
+      version: "1.0.0",
       accuracy: 98.1,
       lastRun: "1 hour ago",
-      category: "Logistics",
+      category: "Geographic",
       priority: 7,
+      author: "AI System (based on SIC 470000 analysis)",
+      created: "January 15, 2025",
       businessImpact: "Eliminates false positives from freight forwarder scenarios",
+      appliesTo: "Reduces manual review of 300+ freight forwarder cases",
       features: [
         "SIC code detection (470000 for freight/transportation)",
         "Keyword pattern matching for logistics companies",
         "Drop-shipment address analysis with C/O prefixes",
-        "Industry classification validation"
-      ]
+        "Industry classification validation",
+        "Shipping vs billing address differentiation"
+      ],
+      examples: [
+        "Acme Chemical Manufacturing vs DHL Express (same address)",
+        "Shell Chemical Company vs C/O Expeditors International"
+      ],
+      testCases: 24,
+      executionCount: 3156,
+      avgExecutionTime: "2.8ms"
     },
     {
       id: "customer-validation-rule-004",
       name: "Enhanced Customer Data Validation",
       description: "Advanced validation rules for customer records including name, email, address checks, and data completeness scoring with AI-powered anomaly detection.",
       status: "testing",
-      version: "2.1",
+      version: "2.1.0",
       accuracy: 87.3,
       lastRun: "Testing in progress",
       category: "Data Quality",
       priority: 6,
+      author: "Data Quality Team",
+      created: "January 10, 2025",
       businessImpact: "Improves data quality by 40% before duplicate detection",
+      appliesTo: "All incoming customer records",
       features: [
         "Multi-field validation with business context",
         "AI-powered anomaly detection",
         "Configurable validation thresholds",
         "Real-time data quality scoring"
-      ]
+      ],
+      examples: [
+        "Incomplete address validation",
+        "Email format verification"
+      ],
+      testCases: 8,
+      executionCount: 0,
+      avgExecutionTime: "N/A"
     }
   ];
 
@@ -296,30 +339,33 @@ export default function RuleLibraryPage() {
     <div className="space-y-6">
       {/* Header - Mobile Optimized */}
       <div className="space-y-4">
-        <div className="flex items-start space-x-3">
-          <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 shrink-0">
-            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  <div className="flex items-start space-x-3">
+            <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 shrink-0">
+              <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+                Rule Library
+              </h1>
+              <p className="text-slate-600 dark:text-slate-400 text-sm">
+                {rules.length} business rules • Production ready • Demo dataset
+              </p>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
-              Rule Library
-            </h1>
-            <p className="text-slate-600 dark:text-slate-400 text-sm">
-              {rules.length} business rules • Production ready
-            </p>
-          </div>
-        </div>
         
         {/* Status Summary */}
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 text-xs">
-            ✓ 3 Production
+            ✓ 3 Production Ready
           </Badge>
           <Badge variant="outline" className="bg-orange-50 text-orange-600 border-orange-200 text-xs">
             ⚡ 1 Testing
           </Badge>
           <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200 text-xs">
-            📊 94-98% Accuracy
+            📊 94.2-98.1% Accuracy
+          </Badge>
+          <Badge variant="outline" className="bg-purple-50 text-purple-600 border-purple-200 text-xs">
+            🏭 Energy • Freight • JV Rules
           </Badge>
         </div>
       </div>
@@ -398,7 +444,48 @@ export default function RuleLibraryPage() {
               <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                 <div className="text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">Business Impact</div>
                 <div className="text-sm text-blue-700 dark:text-blue-300">{rule.businessImpact}</div>
+                {rule.appliesTo && (
+                  <div className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    • {rule.appliesTo}
+                  </div>
+                )}
               </div>
+
+              {/* Production Examples */}
+              {rule.examples && rule.examples.length > 0 && (
+                <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                  <div className="text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Production Examples</div>
+                  {rule.examples.slice(0, 2).map((example, idx) => (
+                    <div key={idx} className="text-xs text-slate-600 dark:text-slate-400 mb-1">
+                      • {example}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Performance Metrics */}
+              {rule.executionCount > 0 && (
+                <div className="mb-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded">
+                    <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      {rule.executionCount.toLocaleString()}
+                    </div>
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400">Executions</div>
+                  </div>
+                  <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded">
+                    <div className="text-xs font-semibold text-blue-700 dark:text-blue-300">
+                      {rule.testCases}
+                    </div>
+                    <div className="text-xs text-blue-600 dark:text-blue-400">Test Cases</div>
+                  </div>
+                  <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded">
+                    <div className="text-xs font-semibold text-purple-700 dark:text-purple-300">
+                      {rule.avgExecutionTime}
+                    </div>
+                    <div className="text-xs text-purple-600 dark:text-purple-400">Avg Time</div>
+                  </div>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex space-x-2">
