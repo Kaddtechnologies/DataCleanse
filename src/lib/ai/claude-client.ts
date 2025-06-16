@@ -3,7 +3,7 @@
  * Uses Azure OpenAI for intelligent rule creation, testing, and improvement
  */
 
-import { environment } from '../../../environment';
+import { serverConfig } from '@/config/environment';
 import { 
   createRuleGenerationPrompt, 
   createTestCaseGenerationPrompt,
@@ -92,10 +92,10 @@ export class ClaudeRuleGenerator {
   private retryDelay: number = 1000; // 1 second
 
   constructor() {
-    this.endpoint = environment.azureOpenAiEndpoint;
-    this.apiKey = environment.azureOpenAiApiKey;
-    this.deployment = environment.azureOpenAiDeploymentName;
-    this.apiVersion = environment.openAiApiVersion;
+    this.endpoint = serverConfig.azureOpenAi.endpoint;
+    this.apiKey = serverConfig.azureOpenAi.apiKey;
+    this.deployment = serverConfig.azureOpenAi.deploymentName;
+    this.apiVersion = serverConfig.azureOpenAi.apiVersion;
   }
 
   /**

@@ -110,7 +110,7 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
                 variant={failed === 0 ? "default" : "destructive"}
                 className={failed === 0 ? "bg-green-500 hover:bg-green-600" : ""}
               >
-                {accuracy.toFixed(1)}% Accuracy
+                {(accuracy || 0).toFixed(1)}% Accuracy
               </Badge>
             )}
             <Button
@@ -159,7 +159,7 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
                       <span className="text-sm font-medium">Overall Progress</span>
                       <span className="text-sm text-muted-foreground">{passed}/{total}</span>
                     </div>
-                    <Progress value={(passed / total) * 100} className="h-2" />
+                    <Progress value={(total || 0) > 0 ? (Number(passed || 0) / Number(total || 1)) * 100 : 0} className="h-2" />
                   </div>
                   
                   <div className="grid grid-cols-3 gap-4">
@@ -183,11 +183,11 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
               </div>
               
               {/* Failed Tests */}
-              {failed > 0 && (
+              {(failed || 0) > 0 && (
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Failed Tests</h3>
                   <div className="space-y-2">
-                    {testResults.results.filter(r => !r.passed).map((result, idx) => (
+                    {(testResults.results || []).filter(r => !r.passed).map((result, idx) => (
                       <div 
                         key={idx}
                         className="p-4 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20"
@@ -230,7 +230,7 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
             
             <TabsContent value="details" className="flex-1 p-6 overflow-auto">
               <div className="space-y-2">
-                {testResults.results.map((result, idx) => (
+                {(testResults.results || []).map((result, idx) => (
                   <div
                     key={idx}
                     className={cn(
@@ -283,7 +283,7 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
                     <Clock className="w-4 h-4 text-blue-600" />
                     <span className="text-sm font-medium">Avg Execution Time</span>
                   </div>
-                  <p className="text-2xl font-bold">{testResults.avgExecutionTime.toFixed(2)}ms</p>
+                  <p className="text-2xl font-bold">{(testResults.avgExecutionTime || 0).toFixed(2)}ms</p>
                 </div>
                 <div className="p-4 rounded-lg border">
                   <div className="flex items-center gap-2 mb-2">
@@ -304,7 +304,7 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
                     <BarChart className="w-4 h-4 text-green-600" />
                     <span className="text-sm font-medium">Success Rate</span>
                   </div>
-                  <p className="text-2xl font-bold">{accuracy.toFixed(1)}%</p>
+                  <p className="text-2xl font-bold">{(accuracy || 0).toFixed(1)}%</p>
                 </div>
               </div>
               

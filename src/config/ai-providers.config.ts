@@ -1,5 +1,5 @@
 import { AIProviderConfig } from '@/lib/ai-provider-manager';
-import { environment } from '../../environment';
+import { serverConfig } from '@/config/environment';
 
 /**
  * AI Provider Configuration
@@ -12,10 +12,10 @@ export const aiProviderConfig: AIProviderConfig = {
       priority: 1,
       type: 'azure_openai',
       config: {
-        apiKey: environment.azureOpenAiApiKey || '6kEA8jhAvaSiqoIDVUXygVWyLEKsmSUY0zIBOqsNeN2g0O6QWtWuJQQJ99BDACHYHv6XJ3w3AAABACOGTeiK',
-        endpoint: environment.azureOpenAiEndpoint || 'https://dev-openai-35t-16k.openai.azure.com',
-        apiVersion: environment.openAiApiVersion || '2024-05-13',
-        deployment: environment.azureOpenAiDeploymentName || 'dai-gpt-4-1-nano'
+        apiKey: serverConfig.azureOpenAi.apiKey || '',
+        endpoint: serverConfig.azureOpenAi.endpoint || 'https://dev-openai-35t-16k.openai.azure.com',
+        apiVersion: serverConfig.azureOpenAi.apiVersion || '2025-01-01-preview',
+        deployment: serverConfig.azureOpenAi.deploymentName || 'dai-gpt-4-1-nano'
       }
     },
     {
@@ -23,7 +23,7 @@ export const aiProviderConfig: AIProviderConfig = {
       priority: 2,
       type: 'openai',
       config: {
-        apiKey: process.env.OPENAI_API_KEY || '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',
+        apiKey: serverConfig.openAiApiKey || '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',
         model: 'gpt-4.1-nano'
       }
     },
@@ -32,7 +32,7 @@ export const aiProviderConfig: AIProviderConfig = {
       priority: 3,
       type: 'google_gemini',
       config: {
-        apiKey: process.env.GOOGLE_API_KEY || 'AIzaSyAGxugbJDi84dIQeIvx6moBPdCDwJdhJIw',
+        apiKey: serverConfig.googleApiKey || 'AIzaSyAGxugbJDi84dIQeIvx6moBPdCDwJdhJIw',
         model: 'gemini-2.0-flash-lite'
       }
     },
@@ -41,7 +41,7 @@ export const aiProviderConfig: AIProviderConfig = {
       priority: 4,
       type: 'anthropic',
       config: {
-        apiKey: process.env.ANTHROPIC_API_KEY || '', // Add your Anthropic key
+        apiKey: serverConfig.anthropicApiKey || '', // Add your Anthropic key
         model: 'claude-3-5-haiku-latest'
       }
     }

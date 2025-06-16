@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate additional test cases if accuracy is low
-    if (testResult.accuracy < 95) {
+    if (testResult?.accuracy && testResult.accuracy < 95) {
       const additionalTests = await ruleTestingFramework.generateAdditionalTestCases(
         ruleToTest,
         'Low accuracy detected, generating edge cases'
@@ -60,56 +60,68 @@ function generateDefaultTestCases(rule: BusinessRule): TestCase[] {
       {
         id: 'test-energy-1',
         name: 'Energy division test - different divisions',
-        record1: {
-          name: 'Shell Chemical Company',
-          address: '123 Energy Boulevard',
-          city: 'Houston',
-          country: 'USA',
-          tpi: 'SHC001'
+        description: 'Should identify different energy divisions at same address',
+        ruleId: rule.id || 'default-rule',
+        input: {
+          record1: {
+            name: 'Shell Chemical Company',
+            address: '123 Energy Boulevard',
+            city: 'Houston',
+            country: 'USA',
+            tpi: 'SHC001'
+          },
+          record2: {
+            name: 'Shell Oil Corporation',
+            address: '123 Energy Boulevard',
+            city: 'Houston',
+            country: 'USA',
+            tpi: 'SHO001'
+          }
         },
-        record2: {
-          name: 'Shell Oil Corporation',
-          address: '123 Energy Boulevard',
-          city: 'Houston',
-          country: 'USA',
-          tpi: 'SHO001'
-        },
-        expected: {
+        expectedOutput: {
           recommendation: 'reject',
           confidence: 'high',
-          confidenceScore: 0.95,
-          businessJustification: 'Different divisions of the same energy company',
-          dataQualityIssues: [],
-          suggestedActions: ['Keep as separate entities']
+          shouldTrigger: true
         },
-        description: 'Should identify different energy divisions at same address'
+        metadata: {
+          createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          tags: ['business-relationship', 'energy', 'division']
+        }
       },
       {
         id: 'test-energy-2',
         name: 'Energy company test - same company',
-        record1: {
-          name: 'BP Oil & Gas',
-          address: '456 Petroleum Way',
-          city: 'London',
-          country: 'UK',
-          tpi: 'BP001'
+        description: 'Should merge same company with formatting differences',
+        ruleId: rule.id || 'default-rule',
+        input: {
+          record1: {
+            name: 'BP Oil & Gas',
+            address: '456 Petroleum Way',
+            city: 'London',
+            country: 'UK',
+            tpi: 'BP001'
+          },
+          record2: {
+            name: 'BP Oil and Gas',
+            address: '456 Petroleum Way',
+            city: 'London',
+            country: 'UK',
+            tpi: 'BP001'
+          }
         },
-        record2: {
-          name: 'BP Oil and Gas',
-          address: '456 Petroleum Way',
-          city: 'London',
-          country: 'UK',
-          tpi: 'BP001'
-        },
-        expected: {
+        expectedOutput: {
           recommendation: 'merge',
           confidence: 'high',
-          confidenceScore: 0.98,
-          businessJustification: 'Same company with minor name variations',
-          dataQualityIssues: [],
-          suggestedActions: ['Merge records']
+          shouldTrigger: true
         },
-        description: 'Should merge same company with formatting differences'
+        metadata: {
+          createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          tags: ['business-relationship', 'energy', 'same-company']
+        }
       }
     );
   } else if (rule.category === 'geographic') {
@@ -117,29 +129,35 @@ function generateDefaultTestCases(rule: BusinessRule): TestCase[] {
       {
         id: 'test-geo-1',
         name: 'Geographic test - different countries',
-        record1: {
-          name: 'Starbucks Corporation',
-          address: '123 Coffee Street',
-          city: 'Seattle',
-          country: 'USA',
-          tpi: 'SB001'
+        description: 'Should keep separate for different countries',
+        ruleId: rule.id || 'default-rule',
+        input: {
+          record1: {
+            name: 'Starbucks Corporation',
+            address: '123 Coffee Street',
+            city: 'Seattle',
+            country: 'USA',
+            tpi: 'SB001'
+          },
+          record2: {
+            name: 'Starbucks Corporation',
+            address: '456 Tea Road',
+            city: 'London',
+            country: 'UK',
+            tpi: 'SB002'
+          }
         },
-        record2: {
-          name: 'Starbucks Corporation',
-          address: '456 Tea Road',
-          city: 'London',
-          country: 'UK',
-          tpi: 'SB002'
-        },
-        expected: {
+        expectedOutput: {
           recommendation: 'reject',
           confidence: 'high',
-          confidenceScore: 0.9,
-          businessJustification: 'Same brand, different geographic locations',
-          dataQualityIssues: [],
-          suggestedActions: ['Keep as separate regional entities']
+          shouldTrigger: true
         },
-        description: 'Should keep separate for different countries'
+        metadata: {
+          createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          tags: ['geographic', 'different-countries']
+        }
       }
     );
   }
@@ -149,26 +167,32 @@ function generateDefaultTestCases(rule: BusinessRule): TestCase[] {
     {
       id: 'test-edge-1',
       name: 'Edge case - missing data',
-      record1: {
-        name: '',
-        address: null as any,
-        city: 'Unknown'
+      description: 'Should handle missing critical data',
+      ruleId: rule.id || 'default-rule',
+      input: {
+        record1: {
+          name: '',
+          address: null as any,
+          city: 'Unknown'
+        },
+        record2: {
+          name: 'Valid Company Inc',
+          address: '789 Main Street',
+          city: 'New York',
+          country: 'USA'
+        }
       },
-      record2: {
-        name: 'Valid Company Inc',
-        address: '789 Main Street',
-        city: 'New York',
-        country: 'USA'
-      },
-      expected: {
+      expectedOutput: {
         recommendation: 'flag',
         confidence: 'low',
-        confidenceScore: 0.2,
-        businessJustification: 'Insufficient data for comparison',
-        dataQualityIssues: ['Missing name in record 1', 'Missing address in record 1'],
-        suggestedActions: ['Review data quality', 'Request additional information']
+        shouldTrigger: true
       },
-      description: 'Should handle missing critical data'
+      metadata: {
+        createdBy: 'system',
+        createdAt: new Date().toISOString(),
+        lastModified: new Date().toISOString(),
+        tags: ['edge-case', 'data-quality', 'missing-data']
+      }
     }
   );
 

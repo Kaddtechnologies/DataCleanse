@@ -106,7 +106,7 @@ ${rule.description}
 ## Scope
 - **Category**: ${rule.category}
 - **Priority**: ${rule.priority}/10
-- **Confidence**: ${rule.metadata?.confidence || 'N/A'}%
+- **Confidence**: ${rule.metadata?.confidence || 'N/A'}
 - **Status**: ${rule.enabled ? 'Active' : 'Inactive'}
 
 ## Performance
@@ -283,7 +283,7 @@ This rule identifies legitimate business divisions that should remain separate e
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Created</p>
-                  <p className="text-sm">{new Date(rule.createdAt).toLocaleDateString()}</p>
+                  <p className="text-sm">{rule.createdAt ? new Date(rule.createdAt).toLocaleDateString() : 'Unknown'}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Author</p>

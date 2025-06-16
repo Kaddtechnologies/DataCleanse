@@ -76,7 +76,7 @@ function openBrowser(url) {
     const nextExecutable = process.platform === 'win32' ? 'next.cmd' : 'next';
     const nextProcess = spawn(
       nextExecutable,
-      ['dev', '-p', String(port)],
+      ['dev', '--turbo', '-p', String(port)],
       { stdio: 'inherit', shell: true }
     );
 

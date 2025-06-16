@@ -249,7 +249,7 @@ export function BusinessRulesTab() {
                         variant={rule.enabled ? 'default' : 'outline'}
                         className={rule.enabled ? 'bg-green-500 hover:bg-green-600' : ''}
                       >
-                        {rule.status}
+                        {rule.status || (rule.enabled ? 'Active' : 'Inactive')}
                       </Badge>
                     </div>
                   </div>

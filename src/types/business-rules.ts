@@ -55,6 +55,18 @@ export interface BusinessRule {
   
   /** Performance metrics for the rule */
   statistics?: RuleStatistics;
+  
+  /** When the rule was created */
+  createdAt?: string;
+  
+  /** Test cases for the rule */
+  testCases?: TestCase[];
+  
+  /** Rule approval workflow */
+  approvals?: ApprovalStep[];
+  
+  /** Current deployment status */
+  status?: 'draft' | 'pending' | 'approved' | 'rejected' | 'deployed' | 'active' | 'inactive';
 }
 
 /**
@@ -84,6 +96,12 @@ export interface RuleResult {
   
   /** Warning or information flags */
   flags: string[];
+  
+  /** Suggested actions for the result */
+  suggestedActions?: string[];
+  
+  /** Data quality issues identified */
+  dataQualityIssues?: string[];
   
   /** Reason if rule was exempted */
   exemptionReason?: string;
@@ -154,6 +172,18 @@ export interface TestResult {
   /** Test accuracy percentage */
   accuracy?: number;
   
+  /** Number of failed tests */
+  failed?: number;
+  
+  /** Total number of tests */
+  totalTests?: number;
+  
+  /** Detailed test results */
+  results?: any[];
+  
+  /** Average execution time in milliseconds */
+  avgExecutionTime?: number;
+  
   /** Suggested additional tests */
   suggestedTests?: TestCase[];
   
@@ -189,7 +219,7 @@ export interface ConversationContext {
   ruleId?: string;
   
   /** Current phase of the conversation */
-  phase: 'requirements' | 'design' | 'implementation' | 'testing' | 'review';
+  phase: 'requirements' | 'design' | 'implementation' | 'testing' | 'review' | 'rule_creation';
   
   /** Context data specific to the conversation type */
   contextData: Record<string, any>;
@@ -222,6 +252,7 @@ export interface ConversationContext {
  * Message in a conversation
  */
 export interface ConversationMessage {
+  timestamp: any;
   /** Unique message identifier */
   id: string;
   
@@ -281,6 +312,9 @@ export interface ApprovalStep {
   
   /** Due date for approval */
   dueDate?: string;
+  
+  /** Approval level (for compatibility) */
+  level?: number;
 }
 
 /**
@@ -372,6 +406,23 @@ export interface RuleStatistics {
 }
 
 /**
+ * Rule condition definition
+ */
+export interface RuleCondition {
+  /** Field to evaluate */
+  field: string;
+  
+  /** Operator to use */
+  operator: 'equals' | 'contains' | 'greater_than' | 'less_than' | 'regex' | 'custom';
+  
+  /** Value to compare against */
+  value: any;
+  
+  /** Additional parameters */
+  parameters?: Record<string, any>;
+}
+
+/**
  * Rule action definition
  */
 export interface RuleAction {
@@ -393,6 +444,24 @@ export interface RuleAction {
     logging?: boolean;
     audit?: boolean;
   };
+  
+  /** Rule condition (for compatibility) */
+  condition?: string;
+  
+  /** Action recommendation */
+  recommendation?: 'merge' | 'review' | 'reject' | 'flag';
+  
+  /** Confidence level */
+  confidence?: 'high' | 'medium' | 'low';
+  
+  /** Confidence score (0-100) */
+  confidenceScore?: number;
+  
+  /** Business justification */
+  justification?: string;
+  
+  /** Suggested actions */
+  suggestedActions?: string[];
 }
 
 /**
@@ -422,6 +491,9 @@ export interface RuleMetadata {
   
   /** Technical owner of the rule */
   technicalOwner?: string;
+  
+  /** Rule confidence level */
+  confidence?: 'high' | 'medium' | 'low';
   
   /** Related documentation */
   documentation?: {
@@ -590,4 +662,28 @@ export interface RuleAuditEntry {
     ipAddress: string;
     userAgent: string;
   };
+}
+
+/**
+ * Result of deduplication processing
+ */
+export interface DeduplicationResult {
+  /** Unique pairs identified */
+  duplicatePairs: any[];
+  
+  /** Processing statistics */
+  statistics: {
+    totalRecords: number;
+    duplicatesFound: number;
+    processingTime: number;
+  };
+  
+  /** Data quality issues found */
+  dataQualityIssues?: string[];
+  
+  /** Confidence scores */
+  confidenceScores?: Record<string, number>;
+  
+  /** Processing metadata */
+  metadata?: Record<string, any>;
 }

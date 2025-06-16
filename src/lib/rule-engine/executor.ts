@@ -1,9 +1,8 @@
-import { BusinessRule, RuleResult } from '@/types/business-rules';
+import { BusinessRule, RuleResult, DeduplicationResult } from '@/types/business-rules';
 import { CustomerRecord } from '@/types';
 import { 
   RuleStatistics, 
   DeduplicationContext, 
-  DeduplicationResult,
   RuleDeploymentStatus 
 } from './types';
 
@@ -72,10 +71,19 @@ export class RuleExecutionEngine {
         // If rule makes a definitive decision, return it
         if (result.recommendation !== 'review') {
           return {
-            ...result,
-            appliedRule: rule.id,
-            executionTime: performance.now() - startTime,
-            ruleVersion: rule.version
+            duplicatePairs: [],
+            statistics: {
+              totalRecords: 2,
+              duplicatesFound: result.recommendation === 'merge' ? 1 : 0,
+              processingTime: performance.now() - startTime
+            },
+            dataQualityIssues: result.dataQualityIssues || [],
+            confidenceScores: { [rule.id]: result.confidenceScore },
+            metadata: {
+              ...result,
+              appliedRule: rule.id,
+              ruleVersion: rule.version
+            }
           };
         }
       } catch (error) {
@@ -87,13 +95,21 @@ export class RuleExecutionEngine {
     
     // No rule made a definitive decision
     return {
-      recommendation: 'review',
-      confidence: 'low',
-      confidenceScore: 0.5,
-      businessJustification: 'No business rules triggered definitive action',
+      duplicatePairs: [],
+      statistics: {
+        totalRecords: 2,
+        duplicatesFound: 0,
+        processingTime: performance.now() - startTime
+      },
       dataQualityIssues: [],
-      suggestedActions: ['Manual review required'],
-      executionTime: performance.now() - startTime
+      confidenceScores: {},
+      metadata: {
+        recommendation: 'review',
+        confidence: 'low',
+        confidenceScore: 0.5,
+        businessJustification: 'No business rules triggered definitive action',
+        suggestedActions: ['Manual review required']
+      }
     };
   }
 
@@ -224,7 +240,7 @@ export class RuleExecutionEngine {
       version: rule.version,
       environment: 'production',
       deployedAt: new Date(),
-      deployedBy: rule.lastModifiedBy || rule.createdBy,
+      deployedBy: rule.lastModifiedBy || rule.createdBy || 'unknown',
       status: 'active',
       previousVersion
     };

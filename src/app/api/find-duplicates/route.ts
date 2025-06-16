@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { environment } from '../../../../environment';
+import { publicConfig } from '@/config/environment';
 
 // Configure body size limit for this API route
 export const config = {
@@ -14,7 +14,7 @@ export const config = {
 export async function POST(request: NextRequest) {
   try {
     // Get the backend URL from environment configuration
-    const backendUrl = environment.apiBaseUrl;
+    const backendUrl = publicConfig.apiBaseUrl;
     
     // Forward the request to the backend
     const response = await fetch(`${backendUrl}/api/find-duplicates`, {

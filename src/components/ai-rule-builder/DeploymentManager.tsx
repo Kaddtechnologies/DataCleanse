@@ -15,7 +15,8 @@ import {
   AlertTriangle,
   Loader2,
   Shield,
-  Users
+  Users,
+  XCircle
 } from 'lucide-react';
 import { BusinessRule, ApprovalStep } from '@/types/business-rules';
 import { useToast } from '@/hooks/use-toast';
@@ -47,26 +48,42 @@ export function DeploymentManager({ rule, testResults, onDeploy }: DeploymentMan
 
   const mockApprovalSteps: ApprovalStep[] = [
     {
-      level: 1,
-      approverRole: 'technical_reviewer',
-      approverName: 'Alan Helm',
+      id: '1',
+      type: 'technical',
       status: 'approved',
-      approvedAt: new Date(Date.now() - 3600000),
-      comments: 'Code looks good, test coverage is excellent.'
+      level: 1,
+      approver: {
+        id: 'alan-helm',
+        name: 'Alan Helm',
+        role: 'Technical Reviewer'
+      },
+      decision: {
+        approved: true,
+        comments: 'Code looks good, test coverage is excellent.',
+        timestamp: new Date(Date.now() - 3600000).toISOString()
+      }
     },
     {
+      id: '2',
+      type: 'business',
+      status: 'pending',
       level: 2,
-      approverRole: 'business_owner',
-      approverName: 'Kirk Wilson',
-      status: 'pending',
-      comments: ''
+      approver: {
+        id: 'kirk-wilson',
+        name: 'Kirk Wilson',
+        role: 'Business Owner'
+      }
     },
     {
-      level: 3,
-      approverRole: 'data_governance',
-      approverName: 'Lamar Duhon',
+      id: '3',
+      type: 'compliance',
       status: 'pending',
-      comments: ''
+      level: 3,
+      approver: {
+        id: 'lamar-duhon',
+        name: 'Lamar Duhon',
+        role: 'Data Governance'
+      }
     }
   ];
 
@@ -181,7 +198,7 @@ export function DeploymentManager({ rule, testResults, onDeploy }: DeploymentMan
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Created:</span>
-              <span className="font-medium">{new Date(rule.createdAt).toLocaleDateString()}</span>
+              <span className="font-medium">{rule.createdAt ? new Date(rule.createdAt).toLocaleDateString() : 'Unknown'}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Test Accuracy:</span>
@@ -254,7 +271,7 @@ export function DeploymentManager({ rule, testResults, onDeploy }: DeploymentMan
                       <XCircle className="w-5 h-5 text-red-600" />
                     )}
                     <span className="font-medium">
-                      {step.approverRole.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                      {step.approver.role}
                     </span>
                   </div>
                   <Badge 
@@ -267,19 +284,19 @@ export function DeploymentManager({ rule, testResults, onDeploy }: DeploymentMan
                     {step.status}
                   </Badge>
                 </div>
-                {step.approverName && (
+                {step.approver && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
                     <User className="w-3 h-3" />
-                    <span>{step.approverName}</span>
-                    {step.approvedAt && (
-                      <span>• {new Date(step.approvedAt).toLocaleDateString()}</span>
+                    <span>{step.approver.name}</span>
+                    {step.decision?.timestamp && (
+                      <span>• {new Date(step.decision.timestamp).toLocaleDateString()}</span>
                     )}
                   </div>
                 )}
-                {step.comments && (
+                {step.decision?.comments && (
                   <div className="flex items-start gap-2 text-sm mt-2">
                     <MessageSquare className="w-3 h-3 text-muted-foreground mt-0.5" />
-                    <p className="text-muted-foreground italic">{step.comments}</p>
+                    <p className="text-muted-foreground italic">{step.decision.comments}</p>
                   </div>
                 )}
               </div>

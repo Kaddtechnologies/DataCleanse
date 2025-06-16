@@ -51,9 +51,14 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
   const [messages, setMessages] = useState<ConversationMessage[]>([
     {
       id: '1',
-      type: 'ai',
+      sessionId: 'current',
+      role: 'assistant',
+      type: 'text',
       content: 'Hello! I\'m here to help you create business rules for deduplication. Tell me about a duplicate scenario you encounter, or choose a quick start template below.',
-      timestamp: new Date()
+      timestamp: new Date(),
+      metadata: {
+        timestamp: new Date().toISOString()
+      }
     }
   ]);
   const [inputValue, setInputValue] = useState('');
@@ -81,9 +86,14 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
 
     const userMessage: ConversationMessage = {
       id: Date.now().toString(),
-      type: 'user',
+      sessionId: 'current',
+      role: 'user',
+      type: 'text',
       content: inputValue.trim(),
-      timestamp: new Date()
+      timestamp: new Date(),
+      metadata: {
+        timestamp: new Date().toISOString()
+      }
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -116,11 +126,13 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
       // Add AI response
       const aiMessage: ConversationMessage = {
         id: Date.now().toString(),
-        type: 'ai',
+        sessionId: 'current',
+        role: 'assistant',
+        type: 'text',
         content: result.explanation || 'I\'ve generated a rule based on your description. You can review and test it in the code editor.',
         timestamp: new Date(),
         metadata: {
-          ruleGenerated: true
+          timestamp: new Date().toISOString()
         }
       };
 
@@ -140,11 +152,13 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
       if (result.questions && result.questions.length > 0) {
         const questionMessage: ConversationMessage = {
           id: (Date.now() + 1).toString(),
-          type: 'ai',
+          sessionId: 'current',
+          role: 'assistant',
+          type: 'clarification',
           content: result.questions.join('\n\n'),
           timestamp: new Date(),
           metadata: {
-            clarificationRequest: true
+            timestamp: new Date().toISOString()
           }
         };
         setMessages(prev => [...prev, questionMessage]);
@@ -154,9 +168,14 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
       console.error('Error generating rule:', error);
       const errorMessage: ConversationMessage = {
         id: Date.now().toString(),
-        type: 'system',
+        sessionId: 'current',
+        role: 'system',
+        type: 'error',
         content: 'I encountered an error while generating the rule. Please try again or rephrase your request.',
-        timestamp: new Date()
+        timestamp: new Date(),
+        metadata: {
+          timestamp: new Date().toISOString()
+        }
       };
       setMessages(prev => [...prev, errorMessage]);
       
@@ -201,20 +220,20 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
                     key={message.id}
                     className={cn(
                       "flex",
-                      message.type === 'user' ? 'justify-end' : 'justify-start'
+                      message.role === 'user' ? 'justify-end' : 'justify-start'
                     )}
                   >
                     <div
                       className={cn(
                         "max-w-[80%] rounded-lg px-4 py-3",
-                        message.type === 'user'
+                        message.role === 'user'
                           ? 'bg-blue-600 text-white'
-                          : message.type === 'ai'
+                          : message.role === 'assistant'
                           ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700'
                           : 'bg-yellow-100 dark:bg-yellow-900/20 text-yellow-900 dark:text-yellow-100 border border-yellow-200 dark:border-yellow-800'
                       )}
                     >
-                      {message.type === 'ai' && (
+                      {message.role === 'assistant' && (
                         <div className="flex items-center gap-2 mb-2">
                           <Sparkles className="w-4 h-4 text-purple-600" />
                           <span className="text-xs font-medium text-purple-600 dark:text-purple-400">
@@ -222,7 +241,7 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
                           </span>
                         </div>
                       )}
-                      {message.type === 'user' && (
+                      {message.role === 'user' && (
                         <div className="flex items-center gap-2 mb-2">
                           <User className="w-4 h-4" />
                           <span className="text-xs font-medium">You</span>

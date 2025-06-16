@@ -12,7 +12,7 @@
  *      guarding against accidental usage.
  */
 
-import { environment } from '../../environment';
+import { serverConfig } from '@/config/environment';
 import { getAIProviderManager } from '@/lib/ai-provider-manager';
 
 /* -------------------------------------------------------------------------- */
@@ -64,12 +64,12 @@ if (typeof window === 'undefined') {
   ai = genkit({
     plugins: [
       azureOpenAI({
-        apiKey: environment.azureOpenAiApiKey,
-        endpoint: environment.azureOpenAiEndpoint,
-        apiVersion: environment.openAiApiVersion,
+        apiKey: serverConfig.azureOpenAi.apiKey,
+        endpoint: serverConfig.azureOpenAi.endpoint,
+        apiVersion: serverConfig.azureOpenAi.apiVersion,
       }),
     ],
-    model: `azure_openai/${environment.azureOpenAiDeploymentName}`,
+    model: `azure_openai/${serverConfig.azureOpenAi.deploymentName}`,
   });
 } else {
   // ----- Running in the browser (client) -----

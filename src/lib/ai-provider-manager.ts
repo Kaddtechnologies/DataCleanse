@@ -3,7 +3,7 @@
  * Handles health checks, validation, and automatic fallback between AI providers
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { environment } from "../../environment";
+import { serverConfig } from '@/config/environment';
 
 export interface AIProvider {
   name: string;
@@ -263,7 +263,7 @@ class AIProviderManager {
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
       const anthropic = new Anthropic();
-      anthropic.apiKey = environment.anthropicApiKey;
+      anthropic.apiKey = serverConfig.anthropicApiKey;
       const msg = await anthropic.messages.create({
         model: "claude-3-5-haiku-latest",
         max_tokens: 1000,

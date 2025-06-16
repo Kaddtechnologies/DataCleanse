@@ -38,7 +38,11 @@
       "Bash(npm run:*)",
       "Bash(docker cp:*)",
       "Bash(npx tsc:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "WebFetch(domain:nextjs.org)"
     ]
   },
   "enableAllProjectMcpServers": false

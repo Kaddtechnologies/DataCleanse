@@ -12,7 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from 'xlsx';
 import readXlsxFile from 'read-excel-file';
-import { environment } from '../../environment';
+// Environment import removed - not used in this file
 import { 
   autoMapColumns, 
   logMappingResults, 

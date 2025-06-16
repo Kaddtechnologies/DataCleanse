@@ -21,7 +21,7 @@ export const ${this.sanitizeRuleName(rule.name)}Rule: BusinessRule = {
   priority: ${rule.priority},
   enabled: ${rule.enabled},
   version: '${rule.version}',
-  createdAt: new Date('${rule.createdAt}'),
+  createdAt: ${rule.createdAt ? `new Date('${rule.createdAt}')` : 'new Date()'},
   createdBy: '${rule.createdBy}',
   
   conditions: ${JSON.stringify(rule.conditions, null, 2)},
@@ -54,29 +54,29 @@ export const ${this.sanitizeRuleName(rule.name)}Rule: BusinessRule = {
    * Generates the evaluation logic based on rule conditions and actions
    */
   private generateEvaluationLogic(rule: BusinessRule): string {
-    const conditions = rule.conditions || {};
-    const actions = rule.actions || [];
+    const actions = Array.isArray(rule.actions) ? rule.actions : [rule.action];
     
     let logic = '';
     
-    // Generate condition checks
-    if (conditions.fieldComparisons) {
-      logic += this.generateFieldComparisons(conditions.fieldComparisons);
-    }
-    
-    if (conditions.patterns) {
-      logic += this.generatePatternMatching(conditions.patterns);
-    }
-    
-    if (conditions.businessLogic) {
-      logic += this.generateBusinessLogic(conditions.businessLogic);
-    }
+    // Generate basic condition logic
+    logic += `
+      // Evaluate rule condition
+      const conditionMet = ${rule.condition || 'true'};
+      
+      if (conditionMet) {
+        // Apply rule actions
+    `;
     
     // Generate actions
-    logic += '\n      // Apply actions based on conditions\n';
     for (const action of actions) {
-      logic += this.generateAction(action);
+      if (action) {
+        logic += this.generateAction(action);
+      }
     }
+    
+    logic += `
+      }
+    `;
     
     return logic;
   }
@@ -212,9 +212,9 @@ export const ${this.sanitizeRuleName(rule.name)}Rule: BusinessRule = {
     let code = `
       // Action: ${action.type}
       if (${this.generateActionCondition(action)}) {
-        result.recommendation = '${action.recommendation || 'review'}';
-        result.confidence = '${action.confidence || 'medium'}';
-        result.confidenceScore = ${action.confidenceScore || 0.5};
+        result.recommendation = '${action.recommendation || action.parameters?.recommendation || 'review'}';
+        result.confidence = '${action.confidence || action.parameters?.confidence || 'medium'}';
+        result.confidenceScore = ${action.confidenceScore || action.parameters?.confidenceScore || 0.5};
         result.businessJustification = '${action.justification || ''}';
         ${action.suggestedActions ? `result.suggestedActions = ${JSON.stringify(action.suggestedActions)};` : ''}
       }
@@ -307,10 +307,23 @@ function levenshteinDistance(str1: string, str2: string): number {
       priority: 5,
       enabled: true,
       version: '1.0.0',
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
       createdBy: context.userId || 'system',
-      conditions: {},
-      actions: []
+      condition: 'true',
+      action: {
+        type: 'set-recommendation',
+        parameters: {
+          recommendation: 'review',
+          confidence: 'medium',
+          confidenceScore: 0.5
+        }
+      },
+      metadata: {
+        createdBy: context.userId || 'system',
+        createdAt: new Date().toISOString(),
+        approvalStatus: 'draft' as const
+      },
+      tags: []
     };
     
     return this.generateRuleCode(rule);

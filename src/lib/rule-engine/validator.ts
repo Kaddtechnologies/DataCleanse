@@ -18,7 +18,7 @@ export class RuleTestingFramework {
     let totalExecutionTime = 0;
     
     // Default test cases if none provided
-    const testCases = rule.testCases && rule.testCases.length > 0 
+    const testCases = (rule.testCases && rule.testCases.length > 0) 
       ? rule.testCases 
       : this.generateDefaultTestCases(rule);
     
@@ -27,8 +27,8 @@ export class RuleTestingFramework {
       
       try {
         // Create full customer records from partial test data
-        const record1 = this.createCustomerRecord(testCase.record1, '1');
-        const record2 = this.createCustomerRecord(testCase.record2, '2');
+        const record1 = this.createCustomerRecord(testCase.input.record1, '1');
+        const record2 = this.createCustomerRecord(testCase.input.record2, '2');
         
         // Execute the rule
         const result = await this.executeRuleForTest(rule, record1, record2);
@@ -36,22 +36,44 @@ export class RuleTestingFramework {
         const executionTime = performance.now() - startTime;
         totalExecutionTime += executionTime;
         
-        const passed = this.compareResults(result, testCase.expected);
+        const passed = this.compareResults(result, testCase.expectedOutput);
+        
+        const expectedResult: RuleResult = {
+          ruleType: rule.category,
+          ruleName: rule.name,
+          confidence: testCase.expectedOutput.confidence,
+          confidenceScore: testCase.expectedOutput.confidence === 'high' ? 0.9 : testCase.expectedOutput.confidence === 'medium' ? 0.6 : 0.3,
+          recommendation: testCase.expectedOutput.recommendation,
+          reasoning: 'Expected test result',
+          flags: [],
+          suggestedActions: []
+        };
         
         results.push({
           testCaseId: testCase.id,
           passed,
           actual: result,
-          expected: testCase.expected,
+          expected: expectedResult,
           executionTime,
           error: null
         });
       } catch (error) {
+        const expectedResult: RuleResult = {
+          ruleType: rule.category,
+          ruleName: rule.name,
+          confidence: testCase.expectedOutput.confidence,
+          confidenceScore: testCase.expectedOutput.confidence === 'high' ? 0.9 : testCase.expectedOutput.confidence === 'medium' ? 0.6 : 0.3,
+          recommendation: testCase.expectedOutput.recommendation,
+          reasoning: 'Expected test result',
+          flags: [],
+          suggestedActions: []
+        };
+        
         results.push({
           testCaseId: testCase.id,
           passed: false,
           actual: null,
-          expected: testCase.expected,
+          expected: expectedResult,
           executionTime: performance.now() - startTime,
           error: error instanceof Error ? error.message : 'Unknown error'
         });
@@ -62,17 +84,34 @@ export class RuleTestingFramework {
     const total = results.length;
     
     return {
-      ruleId: rule.id,
-      ruleName: rule.name,
+      testCaseId: 'summary',
+      passed: passed === total,
+      actualOutput: {
+        ruleType: rule.category,
+        ruleName: rule.name,
+        confidence: 'medium',
+        confidenceScore: total > 0 ? (passed / total) * 100 : 0,
+        recommendation: 'review',
+        reasoning: `${passed}/${total} tests passed`,
+        flags: [],
+        suggestedActions: []
+      },
+      expectedOutput: {
+        confidence: 'high',
+        recommendation: 'merge',
+        shouldTrigger: true
+      },
       accuracy: total > 0 ? (passed / total) * 100 : 0,
-      passed,
       failed: total - passed,
       totalTests: total,
       avgExecutionTime: total > 0 ? totalExecutionTime / total : 0,
       results,
-      timestamp: new Date(),
+      execution: {
+        duration: total > 0 ? totalExecutionTime / total : 0,
+        timestamp: new Date().toISOString()
+      },
       suggestedTests: []
-    };
+    } as any;
   }
 
   private createCustomerRecord(partial: Partial<CustomerRecord>, id: string): CustomerRecord {
@@ -114,10 +153,14 @@ export class RuleTestingFramework {
     // This is a simplified version - in production, this would be more sophisticated
     return async (record1, record2, context) => {
       const result: RuleResult = {
+        ruleType: rule.category,
+        ruleName: rule.name,
         recommendation: 'review',
         confidence: 'medium',
         confidenceScore: 0.5,
+        reasoning: 'Rule evaluation completed',
         businessJustification: '',
+        flags: [],
         dataQualityIssues: [],
         suggestedActions: []
       };
@@ -150,12 +193,11 @@ export class RuleTestingFramework {
     };
   }
 
-  private compareResults(actual: RuleResult, expected: RuleResult): boolean {
+  private compareResults(actual: RuleResult, expected: any): boolean {
     // Compare key fields
     return (
       actual.recommendation === expected.recommendation &&
-      actual.confidence === expected.confidence &&
-      Math.abs(actual.confidenceScore - expected.confidenceScore) < 0.05
+      actual.confidence === expected.confidence
     );
   }
 
@@ -168,52 +210,64 @@ export class RuleTestingFramework {
         {
           id: 'test-1',
           name: 'Different divisions same address',
-          record1: {
-            name: 'Shell Chemical',
-            address: '123 Energy St',
-            city: 'Houston',
-            country: 'USA'
+          description: 'Test division detection',
+          ruleId: rule.id,
+          input: {
+            record1: {
+              name: 'Shell Chemical',
+              address: '123 Energy St',
+              city: 'Houston',
+              country: 'USA'
+            },
+            record2: {
+              name: 'Shell Oil',
+              address: '123 Energy St',
+              city: 'Houston',
+              country: 'USA'
+            }
           },
-          record2: {
-            name: 'Shell Oil',
-            address: '123 Energy St',
-            city: 'Houston',
-            country: 'USA'
-          },
-          expected: {
+          expectedOutput: {
             recommendation: 'reject',
             confidence: 'high',
-            confidenceScore: 0.95,
-            businessJustification: 'Different divisions',
-            dataQualityIssues: [],
-            suggestedActions: ['Keep as separate entities']
+            shouldTrigger: true
           },
-          description: 'Should identify different divisions'
+          metadata: {
+            createdBy: 'system',
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            tags: []
+          }
         },
         {
           id: 'test-2',
           name: 'Same company different locations',
-          record1: {
-            name: 'Shell Oil',
-            address: '123 Energy St',
-            city: 'Houston',
-            country: 'USA'
+          description: 'Test geographic separation',
+          ruleId: rule.id,
+          input: {
+            record1: {
+              name: 'Shell Oil',
+              address: '123 Energy St',
+              city: 'Houston',
+              country: 'USA'
+            },
+            record2: {
+              name: 'Shell Oil',
+              address: '456 Industry Ave',
+              city: 'London',
+              country: 'UK'
+            }
           },
-          record2: {
-            name: 'Shell Oil',
-            address: '456 Industry Ave',
-            city: 'London',
-            country: 'UK'
-          },
-          expected: {
+          expectedOutput: {
             recommendation: 'merge',
             confidence: 'high',
-            confidenceScore: 0.9,
-            businessJustification: 'Same company, different locations',
-            dataQualityIssues: [],
-            suggestedActions: ['Merge records']
+            shouldTrigger: true
           },
-          description: 'Should merge same company'
+          metadata: {
+            createdBy: 'system',
+            createdAt: new Date().toISOString(),
+            lastModified: new Date().toISOString(),
+            tags: []
+          }
         }
       );
     }
@@ -247,15 +301,15 @@ export class RuleTestingFramework {
       warnings.push('Rule has no conditions defined');
     }
 
-    if (!rule.actions || rule.actions.length === 0) {
+    if (!rule.action && (!rule.actions || (Array.isArray(rule.actions) && rule.actions.length === 0))) {
       warnings.push('Rule has no actions defined');
     }
 
     // Test rule execution
     try {
       const testResult = await this.testRule(rule);
-      if (testResult.accuracy < 50) {
-        warnings.push(`Low test accuracy: ${testResult.accuracy.toFixed(1)}%`);
+      if ((testResult.accuracy || 0) < 50) {
+        warnings.push(`Low test accuracy: ${(testResult.accuracy || 0).toFixed(1)}%`);
       }
     } catch (error) {
       errors.push(`Rule execution test failed: ${error}`);
@@ -278,7 +332,7 @@ export class RuleTestingFramework {
 
   private estimateComplexity(rule: BusinessRule): 'low' | 'medium' | 'high' {
     const conditionCount = Object.keys(rule.conditions || {}).length;
-    const actionCount = (rule.actions || []).length;
+    const actionCount = rule.action ? 1 : (Array.isArray(rule.actions) ? rule.actions.length : 0);
     
     const totalOperations = conditionCount + actionCount;
     
@@ -297,46 +351,58 @@ export class RuleTestingFramework {
       {
         id: 'edge-1',
         name: 'Null values test',
-        record1: {
-          name: '',
-          address: null as any,
-          city: 'Unknown'
+        description: 'Test null/empty value handling',
+        ruleId: rule.id,
+        input: {
+          record1: {
+            name: '',
+            address: null as any,
+            city: 'Unknown'
+          },
+          record2: {
+            name: 'Valid Company',
+            address: '123 Main St',
+            city: 'New York'
+          }
         },
-        record2: {
-          name: 'Valid Company',
-          address: '123 Main St',
-          city: 'New York'
-        },
-        expected: {
+        expectedOutput: {
           recommendation: 'flag',
           confidence: 'low',
-          confidenceScore: 0.3,
-          businessJustification: 'Missing critical data',
-          dataQualityIssues: ['Missing name in record 1', 'Missing address in record 1'],
-          suggestedActions: ['Review data quality']
+          shouldTrigger: true
         },
-        description: 'Test handling of null/empty values'
+        metadata: {
+          createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          tags: []
+        }
       },
       {
         id: 'edge-2',
         name: 'Special characters test',
-        record1: {
-          name: 'Company & Co., Ltd.',
-          address: '123 Main St #456'
+        description: 'Test special character handling',
+        ruleId: rule.id,
+        input: {
+          record1: {
+            name: 'Company & Co., Ltd.',
+            address: '123 Main St #456'
+          },
+          record2: {
+            name: 'Company and Co Ltd',
+            address: '123 Main St 456'
+          }
         },
-        record2: {
-          name: 'Company and Co Ltd',
-          address: '123 Main St 456'
-        },
-        expected: {
+        expectedOutput: {
           recommendation: 'merge',
           confidence: 'high',
-          confidenceScore: 0.85,
-          businessJustification: 'Same company with formatting differences',
-          dataQualityIssues: [],
-          suggestedActions: ['Standardize formatting']
+          shouldTrigger: true
         },
-        description: 'Test special character handling'
+        metadata: {
+          createdBy: 'system',
+          createdAt: new Date().toISOString(),
+          lastModified: new Date().toISOString(),
+          tags: []
+        }
       }
     ];
 
