@@ -1,16 +1,19 @@
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { DuplicatePair } from '@/types';
+import { useSessionPersistence } from '@/hooks/use-session-persistence';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Search, Download, Loader2 } from 'lucide-react';
+import { Eye, CheckCircle, XCircle, SkipForward, AlertTriangle, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, Download, Loader2, Trash2, Zap, Search, Filter, Building2, MapPin, Hash } from 'lucide-react';
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import * as XLSX from 'xlsx';
+import { exportDuplicatePairsToExcel } from '@/utils/duplicate-pairs-export';
+import { checkPairForInvalidNames, getDisplayName, hasValidAddressInfo } from '@/utils/record-validation';
+import { RowComparisonDialog } from '@/components/row-comparison-dialog';
 import {
   ColumnDef,
   flexRender,
@@ -32,17 +35,17 @@ const DataTablePagination = ({
   pageSizes = [10, 20, 30, 40, 50],
 }: DataTablePaginationProps) => {
   return (
-    <div className="flex items-center justify-between px-2 py-4">
+    <div className="flex items-center justify-between px-6 py-4 border-t border-border/50 bg-muted/20">
       <div className="flex items-center space-x-6 lg:space-x-8">
         <div className="flex items-center space-x-2">
-          <p className="text-sm font-medium">Rows per page</p>
+          <p className="text-sm font-medium text-muted-foreground">Rows per page</p>
           <Select
             value={`${table.getState().pagination.pageSize}`}
             onValueChange={(value) => {
               table.setPageSize(Number(value));
             }}
           >
-            <SelectTrigger className="h-8 w-[70px]">
+            <SelectTrigger className="h-8 w-[70px] border-border/50">
               <SelectValue placeholder={table.getState().pagination.pageSize} />
             </SelectTrigger>
             <SelectContent side="top">
@@ -54,14 +57,14 @@ const DataTablePagination = ({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex w-[100px] items-center justify-center text-sm font-medium">
+        <div className="flex w-[100px] items-center justify-center text-sm font-medium text-muted-foreground">
           Page {table.getState().pagination.pageIndex + 1} of{" "}
           {table.getPageCount()}
         </div>
         <div className="flex items-center space-x-2">
           <Button
             variant="outline"
-            className="hidden h-8 w-8 p-0 lg:flex"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.setPageIndex(0)}
             disabled={!table.getCanPreviousPage()}
           >
@@ -70,7 +73,7 @@ const DataTablePagination = ({
           </Button>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
@@ -79,7 +82,7 @@ const DataTablePagination = ({
           </Button>
           <Button
             variant="outline"
-            className="h-8 w-8 p-0"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
@@ -88,7 +91,7 @@ const DataTablePagination = ({
           </Button>
           <Button
             variant="outline"
-            className="hidden h-8 w-8 p-0 lg:flex"
+            className="h-8 w-8 p-0 border-border/50"
             onClick={() => table.setPageIndex(table.getPageCount() - 1)}
             disabled={!table.getCanNextPage()}
           >
@@ -108,55 +111,109 @@ interface InteractiveDataGridProps {
   selectedRowIds: Set<string>;
   onToggleRowSelection: (pairId: string) => void;
   onToggleSelectAll: () => void;
+  sessionId?: string;
+  onSessionStatsChanged?: () => void;
 }
 
+// Executive-level Status Badge
 const StatusBadge = ({ status }: { status: DuplicatePair['status'] }) => {
-  switch (status) {
-    case 'merged':
-      return <Badge variant="default" className="bg-green-500 hover:bg-green-600"><CheckCircle className="w-3 h-3 mr-1" /> Merged</Badge>;
-    case 'duplicate':
-      return <Badge variant="default" className="bg-blue-500 hover:bg-blue-600"><CheckCircle className="w-3 h-3 mr-1" /> Duplicate</Badge>;
-    case 'not_duplicate':
-      return <Badge variant="secondary"><XCircle className="w-3 h-3 mr-1" /> Not Duplicate</Badge>;
-    case 'skipped':
-      return <Badge variant="outline"><SkipForward className="w-3 h-3 mr-1" /> Skipped</Badge>;
-    case 'pending':
-    default:
-      return <Badge variant="outline" className="border-yellow-500 text-yellow-600"><AlertTriangle className="w-3 h-3 mr-1" /> Pending</Badge>;
-  }
+  const statusConfig = {
+    merged: {
+      variant: 'default' as const,
+      className: 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-800 font-medium',
+      icon: CheckCircle,
+      label: 'Merged'
+    },
+    duplicate: {
+      variant: 'default' as const,
+      className: 'bg-blue-500/10 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800 font-medium',
+      icon: CheckCircle,
+      label: 'Duplicate'
+    },
+    not_duplicate: {
+      variant: 'default' as const,
+      className: 'bg-slate-500/10 text-slate-700 border-slate-200 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-800 font-medium',
+      icon: XCircle,
+      label: 'Not Duplicate'
+    },
+    skipped: {
+      variant: 'default' as const,
+      className: 'bg-amber-500/10 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800 font-medium',
+      icon: SkipForward,
+      label: 'Skipped'
+    },
+    pending: {
+      variant: 'default' as const,
+      className: 'bg-orange-500/10 text-orange-700 border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-800 font-medium',
+      icon: AlertTriangle,
+      label: 'Pending'
+    }
+  };
+
+  const config = statusConfig[status] || statusConfig.pending;
+  const IconComponent = config.icon;
+
+  return (
+    <Badge variant={config.variant} className={`${config.className} px-3 py-1 text-xs`}>
+      <IconComponent className="w-3 h-3 mr-1.5" />
+      {config.label}
+    </Badge>
+  );
 };
 
+// Executive-level AI Confidence Badge
 const AiConfidenceBadge = ({ confidence }: { confidence?: string }) => {
-  if (!confidence) {
-    return <span className="text-xs text-muted-foreground">-</span>;
+  if (!confidence || confidence === 'Error') {
+    return (
+      <Badge variant="outline" className="bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-800 px-3 py-1 text-xs font-medium">
+        Error
+      </Badge>
+    );
   }
 
-  let badgeVariant: "default" | "secondary" | "outline" | "destructive" = "outline";
-  let className = "";
+  const confidenceConfig = {
+    high: {
+      className: 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-800',
+      label: 'High'
+    },
+    medium: {
+      className: 'bg-amber-500/10 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800',
+      label: 'Medium'
+    },
+    low: {
+      className: 'bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-800',
+      label: 'Low'
+    }
+  };
 
-  switch (confidence.toLowerCase()) {
-    case 'high':
-      badgeVariant = "default";
-      className = "bg-green-500 hover:bg-green-600";
-      break;
-    case 'medium':
-      badgeVariant = "secondary";
-      className = "bg-yellow-500 hover:bg-yellow-600 text-black"; // Ensure contrast for yellow
-      break;
-    case 'low':
-      badgeVariant = "destructive"; // Using destructive for low for better visual cue
-      break;
-    case 'error':
-      badgeVariant = "destructive";
-      className = "bg-red-700 hover:bg-red-800";
-      break;
-    default: // For any other unexpected values
-      badgeVariant = "outline";
+  const config = confidenceConfig[confidence.toLowerCase() as keyof typeof confidenceConfig];
+  if (!config) return <span className="text-xs text-muted-foreground">-</span>;
+
+  return (
+    <Badge variant="outline" className={`${config.className} px-3 py-1 text-xs font-medium`}>
+      {config.label}
+    </Badge>
+  );
+};
+
+// Executive-level Similarity Score Badge
+const SimilarityBadge = ({ score }: { score: number }) => {
+  const percentage = Math.round(score * 100);
+  
+  let className = '';
+  if (percentage >= 95) {
+    className = 'bg-emerald-500/10 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-800';
+  } else if (percentage >= 85) {
+    className = 'bg-blue-500/10 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-800';
+  } else if (percentage >= 70) {
+    className = 'bg-amber-500/10 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-800';
+  } else {
+    className = 'bg-red-500/10 text-red-700 border-red-200 dark:bg-red-500/20 dark:text-red-300 dark:border-red-800';
   }
 
   return (
-    <Badge variant={badgeVariant} className={className}>
-      {confidence}
+    <Badge variant="outline" className={`${className} px-3 py-1 text-xs font-medium tabular-nums`}>
+      {percentage}%
     </Badge>
   );
 };
@@ -167,89 +224,250 @@ export function InteractiveDataGrid({
   onUpdatePairStatus,
   selectedRowIds,
   onToggleRowSelection,
-  onToggleSelectAll 
+  onToggleSelectAll,
+  sessionId,
+  onSessionStatsChanged
 }: InteractiveDataGridProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
+  const [smartSearchQuery, setSmartSearchQuery] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
   
-  // Filter data based on status and confidence filters
+  // Row comparison dialog state
+  const [showRowComparison, setShowRowComparison] = useState(false);
+  const [comparisonRowNumbers, setComparisonRowNumbers] = useState<number[]>([]);
+  
+  // Database persistence
+  const { updateDuplicatePair } = useSessionPersistence();
+  
+  // Enhanced status update handler that saves to database
+  const handleStatusUpdate = async (pairId: string, status: 'merged' | 'not_duplicate' | 'skipped' | 'duplicate') => {
+    // Update local state first for immediate UI feedback
+    onUpdatePairStatus(pairId, status);
+    
+    // Save to database if session ID is available
+    if (sessionId) {
+      try {
+        await updateDuplicatePair(pairId, { status });
+        // Trigger session stats refresh
+        if (onSessionStatsChanged) {
+          onSessionStatsChanged();
+        }
+      } catch (error) {
+        console.error('Failed to save status to database:', error);
+      }
+    }
+  };
+  
+  // Handle row number clicks for comparison
+  const handleRowNumberClick = (rowNumbers: (number | undefined)[]) => {
+    const validRowNumbers = rowNumbers.filter((num): num is number => 
+      num !== undefined && num !== null && !isNaN(num)
+    );
+    
+    console.log('Row numbers clicked:', rowNumbers);
+    console.log('Valid row numbers:', validRowNumbers);
+    console.log('Session ID:', sessionId);
+    
+    if (validRowNumbers.length > 0 && sessionId) {
+      setComparisonRowNumbers(validRowNumbers);
+      setShowRowComparison(true);
+    }
+  };
+
+  // Smart search function
+  const smartSearchFilter = (pair: DuplicatePair, query: string): boolean => {
+    if (!query.trim()) return true;
+    
+    const searchQuery = query.toLowerCase().trim().replace(/[^\w\s]/g, '');
+    
+    const searchableFields = [
+      pair.record1.name?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.address?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.city?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.country?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.tpi?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record1.rowNumber?.toString() || '',
+      
+      pair.record2.name?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.address?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.city?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.country?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.tpi?.toLowerCase().replace(/[^\w\s]/g, '') || '',
+      pair.record2.rowNumber?.toString() || '',
+    ];
+    
+    const searchTerms = searchQuery.split(/\s+/).filter(term => term.length > 0);
+    
+    return searchTerms.every(term =>
+      searchableFields.some(field => field.includes(term))
+    );
+  };
+
+  // Filter data based on status, confidence, smart search, and invalid names
   const filteredData = useMemo(() => {
     return data.filter(pair => {
-      // Apply status filter
+      // Filter out pairs where both records are completely invalid (both name and address invalid)
+      const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+      const record1CompletelyInvalid = record1Invalid && !hasValidAddressInfo(pair.record1);
+      const record2CompletelyInvalid = record2Invalid && !hasValidAddressInfo(pair.record2);
+      
+      // Exclude pairs where at least one record is completely invalid
+      if (record1CompletelyInvalid || record2CompletelyInvalid) {
+        return false;
+      }
+      
       if (statusFilter !== "all" && pair.status !== statusFilter) {
         return false;
       }
       
-      // Apply confidence filter
       if (confidenceFilter !== "all" && pair.aiConfidence !== confidenceFilter) {
+        return false;
+      }
+      
+      if (!smartSearchFilter(pair, smartSearchQuery)) {
         return false;
       }
       
       return true;
     });
-  }, [data, statusFilter, confidenceFilter]);
+  }, [data, statusFilter, confidenceFilter, smartSearchQuery]);
 
   const columns: ColumnDef<DuplicatePair>[] = [
     {
       id: "select",
       header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          onCheckedChange={(value) => {
-            table.toggleAllPageRowsSelected(!!value);
-            onToggleSelectAll();
-          }}
-          aria-label="Select all"
-        />
+        <div className="flex items-center">
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            onCheckedChange={(value) => {
+              table.toggleAllPageRowsSelected(!!value);
+              onToggleSelectAll();
+            }}
+            aria-label="Select all"
+            className="border-border/50"
+          />
+        </div>
       ),
       cell: ({ row }) => (
-        <Checkbox
-          checked={selectedRowIds.has(row.original.id)}
-          onCheckedChange={() => onToggleRowSelection(row.original.id)}
-          aria-label="Select row"
-        />
+        <div className="flex items-center">
+          <Checkbox
+            checked={selectedRowIds.has(row.original.id)}
+            onCheckedChange={() => onToggleRowSelection(row.original.id)}
+            aria-label="Select row"
+            className="border-border/50"
+          />
+        </div>
       ),
       enableSorting: false,
       enableGlobalFilter: false,
+      size: 50,
     },
     {
       accessorKey: "record1",
       header: "Record 1",
-      cell: ({ row }) => (
-        <div>
-          <div className="font-medium">{row.original.record1.name}</div>
-          <div className="text-xs text-muted-foreground">{row.original.record1.address}</div>
-          <div className="text-xs text-muted-foreground">
-            {row.original.record1.city && `${row.original.record1.city}, ${row.original.record1.country || ''}`}
-            {!row.original.record1.city && row.original.record1.country}
+      cell: ({ row }) => {
+        const { record1Invalid } = checkPairForInvalidNames(row.original);
+        const record1HasValidAddress = hasValidAddressInfo(row.original.record1);
+        const needsUserDecision = record1Invalid && record1HasValidAddress;
+        
+        return (
+          <div className="space-y-2">
+            <div className="flex items-start space-x-3">
+              <Building2 className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className={`font-medium text-sm ${record1Invalid ? 'text-red-600' : 'text-foreground'} truncate`}>
+                  {row.original.record1.name}
+                  {record1Invalid && (
+                    <span className="ml-2 text-xs text-red-500 font-normal">
+                      {needsUserDecision ? '(no name - needs review)' : '(invalid)'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 mt-1">
+                  <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                  <div 
+                    className="text-xs text-muted-foreground truncate cursor-help"
+                    title={row.original.record1.address || 'No address available'}
+                  >
+                    {row.original.record1.address}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {[row.original.record1.city, row.original.record1.country].filter(Boolean).join(', ')}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Hash className="w-3 h-3 text-muted-foreground" />
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-muted/50 border-border/50 cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => handleRowNumberClick([row.original.record1.rowNumber, row.original.record2.rowNumber])}
+                title="Click to compare rows"
+              >
+                Row {row.original.record1.rowNumber || 'N/A'}
+              </Badge>
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            <Badge variant="outline" className="bg-slate-100">Row: {row.original.record1.rowNumber || 'N/A'}</Badge>
-          </div>
-        </div>
-      ),
+        );
+      },
       enableSorting: true,
+      size: 300,
     },
     {
       accessorKey: "record2",
-      header: "Record 2",
-      cell: ({ row }) => (
-        <div>
-          <div className="font-medium">{row.original.record2.name}</div>
-          <div className="text-xs text-muted-foreground">{row.original.record2.address}</div>
-          <div className="text-xs text-muted-foreground">
-            {row.original.record2.city && `${row.original.record2.city}, ${row.original.record2.country || ''}`}
-            {!row.original.record2.city && row.original.record2.country}
+      header: "Record 2", 
+      cell: ({ row }) => {
+        const { record2Invalid } = checkPairForInvalidNames(row.original);
+        const record2HasValidAddress = hasValidAddressInfo(row.original.record2);
+        const needsUserDecision = record2Invalid && record2HasValidAddress;
+        
+        return (
+          <div className="space-y-2">
+            <div className="flex items-start space-x-3">
+              <Building2 className="w-4 h-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className={`font-medium text-sm ${record2Invalid ? 'text-red-600' : 'text-foreground'} truncate`}>
+                  {row.original.record2.name}
+                  {record2Invalid && (
+                    <span className="ml-2 text-xs text-red-500 font-normal">
+                      {needsUserDecision ? '(no name - needs review)' : '(invalid)'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2 mt-1">
+                  <MapPin className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                  <div 
+                    className="text-xs text-muted-foreground truncate cursor-help"
+                    title={row.original.record2.address || 'No address available'}
+                  >
+                    {row.original.record2.address}
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1 truncate">
+                  {[row.original.record2.city, row.original.record2.country].filter(Boolean).join(', ')}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Hash className="w-3 h-3 text-muted-foreground" />
+              <Badge 
+                variant="outline" 
+                className="text-xs bg-muted/50 border-border/50 cursor-pointer hover:bg-accent transition-colors"
+                onClick={() => handleRowNumberClick([row.original.record1.rowNumber, row.original.record2.rowNumber])}
+                title="Click to compare rows"
+              >
+                Row {row.original.record2.rowNumber || 'N/A'}
+              </Badge>
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground mt-1">
-            <Badge variant="outline" className="bg-slate-100">Row: {row.original.record2.rowNumber || 'N/A'}</Badge>
-          </div>
-        </div>
-      ),
+        );
+      },
       enableSorting: true,
+      size: 300,
     },
     {
       accessorKey: "similarityScore",
@@ -257,57 +475,79 @@ export function InteractiveDataGrid({
         <Button
           variant="ghost"
           onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="hover:bg-muted/50 px-2"
         >
           Similarity
           <ArrowUpDown className="ml-2 h-4 w-4" />
         </Button>
       ),
       cell: ({ row }) => (
-        <div className="text-center">
-          <Badge
-            variant={row.original.similarityScore > 0.8 ? "default" : row.original.similarityScore > 0.6 ? "secondary" : "destructive"}
-            className={
-              row.original.similarityScore > 0.8 ? "bg-green-500 hover:bg-green-600" : 
-              row.original.similarityScore > 0.6 ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""
-            }
-          >
-            {(row.original.similarityScore * 100).toFixed(0)}%
-          </Badge>
+        <div className="flex justify-center">
+          <SimilarityBadge score={row.original.similarityScore} />
         </div>
       ),
+      size: 120,
     },
     {
       accessorKey: "aiConfidence",
       header: "AI Confidence",
       cell: ({ row }) => (
-        <div className="text-center">
-          <AiConfidenceBadge confidence={row.original.aiConfidence} />
+        <div className="flex justify-center">
+          <AiConfidenceBadge confidence={row.original.enhancedConfidence || row.original.aiConfidence} />
         </div>
       ),
+      size: 140,
     },
     {
       accessorKey: "status",
       header: "Status",
       cell: ({ row }) => (
-        <div className="text-center">
+        <div className="flex justify-center">
           <StatusBadge status={row.original.status} />
         </div>
       ),
+      size: 120,
     },
     {
       id: "actions",
+      header: "Actions",
       cell: ({ row }) => (
-        <div className="text-right">
+        <div className="flex items-center justify-end space-x-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => onReviewPair(row.original)}
+            className="border-border/50 hover:bg-accent text-xs px-3 py-1.5"
           >
-            <Eye className="w-4 h-4 mr-1 md:mr-2" />
-            <span className="hidden md:inline">Review</span>
+            <Eye className="w-3 h-3 mr-1.5" />
+            Review
           </Button>
+          
+          {row.original.status === 'pending' && (
+            <div className="flex items-center space-x-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleStatusUpdate(row.original.id, 'duplicate')}
+                className="text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 hover:text-emerald-700 h-7 w-7 p-0"
+                title="Mark as Duplicate"
+              >
+                <CheckCircle className="w-3 h-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleStatusUpdate(row.original.id, 'not_duplicate')}
+                className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950 hover:text-red-700 h-7 w-7 p-0"
+                title="Not a Duplicate"
+              >
+                <XCircle className="w-3 h-3" />
+              </Button>
+            </div>
+          )}
         </div>
       ),
+      size: 160,
     },
   ];
 
@@ -316,13 +556,10 @@ export function InteractiveDataGrid({
     columns,
     state: {
       sorting,
-      globalFilter,
     },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: {
       pagination: {
@@ -331,238 +568,13 @@ export function InteractiveDataGrid({
     },
   });
 
-  // Function to export data to Excel with specified formatting
-  const handleExportToExcel = async () => {
-    if (!data || data.length === 0 || isExporting) return;
-    
-    setIsExporting(true);
-    
-    try {
-      // Wrap in setTimeout to allow UI to update with loading state
-      setTimeout(() => {
-        // Get the filtered rows from the table instead of using raw data
-        // This ensures export matches what's currently displayed
-        const filteredRows = table.getFilteredRowModel().rows;
-        const filteredData = filteredRows.map(row => row.original);
-        
-        if (filteredData.length === 0) {
-          setIsExporting(false);
-          return; // No data to export after filtering
-        }
-        
-        // Prepare data for export, organizing by status groups
-        const exportData: any[] = [];
-        
-        // Helper function to get status display name
-        const getStatusDisplayName = (status: DuplicatePair['status']) => {
-          switch (status) {
-            case 'merged': return 'Merged';
-            case 'not_duplicate': return 'Not Duplicate';
-            case 'skipped': return 'Skipped';
-            case 'pending': return 'Skipped - Needs Review';
-            case 'duplicate': return 'Duplicate';
-            default: return 'Unknown Status';
-          }
-        };
-
-        // Helper function to sort data by TPI or Name
-        const sortedData = [...filteredData].sort((a, b) => {
-          // First try to sort by TPI if available
-          const tpiA = a.record1.tpi || '';
-          const tpiB = b.record1.tpi || '';
-          
-          if (tpiA && tpiB) {
-            return tpiA.localeCompare(tpiB);
-          }
-          
-          // Fall back to sorting by name
-          return a.record1.name.localeCompare(b.record1.name);
-        });
-        
-        // Group data by status
-        const groupedData: Record<string, DuplicatePair[]> = {
-          'merged': [],
-          'not_duplicate': [],
-          'skipped': [],
-          'pending': [],
-          'duplicate': []
-        };
-        
-        sortedData.forEach(pair => {
-          // Make sure the status exists in groupedData
-          if (!groupedData[pair.status]) {
-            groupedData[pair.status] = [];
-          }
-          groupedData[pair.status].push(pair);
-        });
-        
-        // Add export metadata header with filter information
-        exportData.push({
-          section: 'Deduplication Results Export',
-          info: `Generated: ${new Date().toLocaleString()}`,
-          filter: globalFilter ? `Filter applied: "${globalFilter}"` : 'No filters applied',
-          empty1: '',
-          empty2: ''
-        });
-        
-        // Add summary of filtered data
-        exportData.push({
-          section: 'Export Summary',
-          info: `Total Records: ${filteredData.length}/${data.length}`,
-          filter: globalFilter ? 'Filtered View' : 'Complete View',
-          empty1: '',
-          empty2: ''
-        });
-        
-        // Add empty row as separator
-        exportData.push({});
-        
-        // Add section headers and data for each status group
-        Object.keys(groupedData).forEach(status => {
-          if (groupedData[status].length > 0) {
-            // Add section header
-            exportData.push({
-              section: `${getStatusDisplayName(status as DuplicatePair['status'])} Records`,
-              count: `Count: ${groupedData[status].length}`,
-              empty1: '',
-              empty2: '',
-              empty3: '',
-              empty4: '',
-              empty5: '',
-              empty6: '',
-              empty7: '',
-              empty8: '',
-              empty9: '',
-            });
-            
-            // Add column headers
-            exportData.push({
-              masterRowId: 'Master Row ID',
-              duplicateRowId: 'Duplicate Row ID',
-              masterName: 'Master Name',
-              masterAddress: 'Master Address',
-              masterCity: 'Master City',
-              masterCountry: 'Master Country',
-              masterTpi: 'Master TPI',
-              duplicateName: 'Duplicate Name',
-              duplicateAddress: 'Duplicate Address',
-              duplicateCity: 'Duplicate City',
-              duplicateCountry: 'Duplicate Country',
-              duplicateTpi: 'Duplicate TPI',
-              similarityScore: 'Similarity Score',
-              aiConfidence: 'AI Confidence',
-              status: 'Status',
-              action: 'Action Taken'
-            });
-            
-            // Add data rows
-            groupedData[status].forEach(pair => {
-              // For merged and duplicate, only keep the master record
-              if (status === 'merged' || status === 'duplicate') {
-                const row: any = {
-                  masterRowId: pair.record1.rowId || '',
-                  duplicateRowId: '',
-                  masterName: pair.record1.name || '',
-                  masterAddress: pair.record1.address || '',
-                  masterCity: pair.record1.city || '',
-                  masterCountry: pair.record1.country || '',
-                  masterTpi: pair.record1.tpi || '',
-                  duplicateName: '',
-                  duplicateAddress: '',
-                  duplicateCity: '',
-                  duplicateCountry: '',
-                  duplicateTpi: '',
-                  similarityScore: `${(pair.similarityScore * 100).toFixed(0)}%`,
-                  aiConfidence: pair.aiConfidence || '-',
-                  status: getStatusDisplayName(pair.status),
-                  action: 'Merged to Master'
-                };
-                
-                exportData.push(row);
-              }
-              // For skipped and not_duplicate, keep both records
-              else if (status === 'skipped' || status === 'not_duplicate' || status === 'pending') {
-                const row: any = {
-                  masterRowId: pair.record1.rowId || '',
-                  duplicateRowId: pair.record2.rowId || '',
-                  masterName: pair.record1.name || '',
-                  masterAddress: pair.record1.address || '',
-                  masterCity: pair.record1.city || '',
-                  masterCountry: pair.record1.country || '',
-                  masterTpi: pair.record1.tpi || '',
-                  duplicateName: pair.record2.name || '',
-                  duplicateAddress: pair.record2.address || '',
-                  duplicateCity: pair.record2.city || '',
-                  duplicateCountry: pair.record2.country || '',
-                  duplicateTpi: pair.record2.tpi || '',
-                  similarityScore: `${(pair.similarityScore * 100).toFixed(0)}%`,
-                  aiConfidence: pair.aiConfidence || '-',
-                  status: getStatusDisplayName(pair.status),
-                  action: status === 'not_duplicate' ? 'Kept Both Records' : 'Pending Decision'
-                };
-                
-                exportData.push(row);
-              }
-            });
-            
-            // Add empty row as separator
-            exportData.push({});
-          }
-        });
-        
-        // Create worksheet
-        const ws = XLSX.utils.json_to_sheet(exportData, { skipHeader: true });
-        
-        // Apply formatting (column widths and cell styles)
-        const colWidths = [
-          { wch: 15 }, // Master Row ID
-          { wch: 15 }, // Duplicate Row ID
-          { wch: 30 }, // Master Name
-          { wch: 30 }, // Master Address
-          { wch: 15 }, // Master City
-          { wch: 15 }, // Master Country
-          { wch: 15 }, // Master TPI
-          { wch: 30 }, // Duplicate Name
-          { wch: 30 }, // Duplicate Address
-          { wch: 15 }, // Duplicate City
-          { wch: 15 }, // Duplicate Country
-          { wch: 15 }, // Duplicate TPI
-          { wch: 15 }, // Similarity Score
-          { wch: 15 }, // AI Confidence
-          { wch: 20 }, // Status
-          { wch: 20 }, // Action Taken
-        ];
-        
-        ws['!cols'] = colWidths;
-        
-        // Create workbook and add worksheet
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Deduplication Results');
-        
-        // Generate file name with filter indication if filtered
-        const fileName = globalFilter 
-          ? `deduplication_results_filtered_${new Date().toISOString().slice(0,10)}.xlsx`
-          : `deduplication_results_${new Date().toISOString().slice(0,10)}.xlsx`;
-        
-        // Generate Excel file and trigger download
-        XLSX.writeFile(wb, fileName);
-        
-        // Reset loading state
-        setIsExporting(false);
-      }, 100);
-    } catch (error) {
-      console.error("Error exporting data:", error);
-      setIsExporting(false);
-    }
-  };
-
   if (!data) {
     return (
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold">Potential Duplicates</CardTitle>
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader className="border-b border-border/50 bg-muted/20">
+          <CardTitle className="text-xl font-semibold text-foreground">Potential Duplicates Review</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <p className="text-muted-foreground">Loading data or no data available.</p>
         </CardContent>
       </Card>
@@ -571,11 +583,11 @@ export function InteractiveDataGrid({
 
   if (data.length === 0) {
     return (
-      <Card className="shadow-lg">
-        <CardHeader>
-          <CardTitle className="text-2xl font-semibold">Potential Duplicates</CardTitle>
+      <Card className="border-border/50 shadow-sm">
+        <CardHeader className="border-b border-border/50 bg-muted/20">
+          <CardTitle className="text-xl font-semibold text-foreground">Potential Duplicates Review</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <p className="text-muted-foreground">No duplicate pairs found or data not yet processed.</p>
         </CardContent>
       </Card>
@@ -583,47 +595,54 @@ export function InteractiveDataGrid({
   }
 
   return (
-    <Card className="shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-2xl font-semibold">Potential Duplicates Review</CardTitle>
+    <Card className="border-border/50 shadow-sm">
+      <CardHeader className="border-b border-border/50 bg-muted/20">
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredData.length} of {data.length} potential duplicate {data.length === 1 ? 'pair' : 'pairs'}.
-            {statusFilter !== "all" && ` (Status: ${statusFilter})`}
-            {confidenceFilter !== "all" && ` (Confidence: ${confidenceFilter})`}
-          </p>
-          <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:space-x-2">
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportToExcel}
-                disabled={!data || data.length === 0 || isExporting}
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Exporting...
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4 mr-2" /> Export to Excel
-                  </>
-                )}
-              </Button>
-              <Input
-                placeholder="Search all columns..."
-                value={globalFilter ?? ""}
-                onChange={(event) => setGlobalFilter(event.target.value)}
-                className="max-w-sm"
-              />
+          <div>
+            <CardTitle className="text-xl font-semibold text-foreground mb-2">Potential Duplicates Review</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Showing {filteredData.length} of {data.length} potential duplicate pairs
+              {smartSearchQuery && ` (Search: "${smartSearchQuery}")`}
+              {data.some(pair => {
+                const { record1Invalid, record2Invalid } = checkPairForInvalidNames(pair);
+                const record1CompletelyInvalid = record1Invalid && !hasValidAddressInfo(pair.record1);
+                const record2CompletelyInvalid = record2Invalid && !hasValidAddressInfo(pair.record2);
+                return record1CompletelyInvalid || record2CompletelyInvalid;
+              }) && ` • Pairs with completely invalid records are hidden`}
+            </p>
+          </div>
+        </div>
+        
+        {/* Executive Controls Section */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mt-6">
+          {/* Advanced Search */}
+          <div className="relative flex-1 max-w-md">
+            <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+              <Search className="w-4 h-4 text-muted-foreground" />
             </div>
-            
-            <div className="flex items-center space-x-2">
-              <Select
-                value={statusFilter}
-                onValueChange={setStatusFilter}
+            <Input
+              placeholder="Search records..."
+              value={smartSearchQuery}
+              onChange={(event) => setSmartSearchQuery(event.target.value)}
+              className="pl-10 border-border/50 bg-background/50 focus:bg-background transition-colors"
+            />
+            {smartSearchQuery && (
+              <button
+                onClick={() => setSmartSearchQuery('')}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                title="Clear search"
               >
-                <SelectTrigger className="h-8 w-[130px]">
+                ×
+              </button>
+            )}
+          </div>
+          
+          {/* Executive Filters */}
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <Filter className="w-4 h-4 text-muted-foreground" />
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="h-9 w-[140px] border-border/50 bg-background/50">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -636,11 +655,8 @@ export function InteractiveDataGrid({
                 </SelectContent>
               </Select>
               
-              <Select
-                value={confidenceFilter}
-                onValueChange={setConfidenceFilter}
-              >
-                <SelectTrigger className="h-8 w-[130px]">
+              <Select value={confidenceFilter} onValueChange={setConfidenceFilter}>
+                <SelectTrigger className="h-9 w-[140px] border-border/50 bg-background/50">
                   <SelectValue placeholder="Confidence" />
                 </SelectTrigger>
                 <SelectContent>
@@ -654,14 +670,19 @@ export function InteractiveDataGrid({
           </div>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="rounded-md border">
+      
+      <CardContent className="p-0">
+        <div className="overflow-hidden">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               {table.getHeaderGroups().map((headerGroup) => (
-                <TableRow key={headerGroup.id}>
+                <TableRow key={headerGroup.id} className="border-border/50 hover:bg-transparent">
                   {headerGroup.headers.map((header) => (
-                    <TableHead key={header.id}>
+                    <TableHead 
+                      key={header.id} 
+                      className="text-muted-foreground font-semibold text-xs uppercase tracking-wide py-4 px-6"
+                      style={{ width: header.getSize() }}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -675,28 +696,48 @@ export function InteractiveDataGrid({
             </TableHeader>
             <TableBody>
               {table.getRowModel().rows?.length ? (
-                table.getRowModel().rows.map((row) => (
-                  <TableRow
-                    key={row.id}
-                    data-state={row.getIsSelected() && "selected"}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <TableCell key={cell.id}>
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
+                table.getRowModel().rows.map((row, index) => {
+                  const { hasInvalidName, record1Invalid, record2Invalid } = checkPairForInvalidNames(row.original);
+                  const record1HasValidAddress = hasValidAddressInfo(row.original.record1);
+                  const record2HasValidAddress = hasValidAddressInfo(row.original.record2);
+                  const needsUserDecision = (record1Invalid && record1HasValidAddress) || (record2Invalid && record2HasValidAddress);
+                  
+                  let rowClassName = "border-border/50 hover:bg-muted/30 transition-colors";
+                  if (needsUserDecision) {
+                    rowClassName += " bg-amber-50/50 dark:bg-amber-950/10"; // Amber for user decision needed
+                  } else if (hasInvalidName) {
+                    rowClassName += " bg-red-50/50 dark:bg-red-950/10"; // Red for other invalid cases
+                  }
+                  rowClassName += ` ${index % 2 === 0 ? " bg-background" : " bg-muted/10"}`;
+                  
+                  return (
+                    <TableRow
+                      key={row.id}
+                      data-state={row.getIsSelected() && "selected"}
+                      className={rowClassName}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell 
+                          key={cell.id} 
+                          className="py-4 px-6 align-top"
+                          style={{ width: cell.column.getSize() }}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  );
+                })
               ) : (
                 <TableRow>
                   <TableCell
                     colSpan={columns.length}
-                    className="h-24 text-center"
+                    className="h-24 text-center text-muted-foreground"
                   >
-                    No results.
+                    No results found.
                   </TableCell>
                 </TableRow>
               )}
@@ -705,6 +746,15 @@ export function InteractiveDataGrid({
         </div>
         <DataTablePagination table={table} />
       </CardContent>
+      
+      {/* Row Comparison Dialog */}
+      <RowComparisonDialog
+        isOpen={showRowComparison}
+        onClose={() => setShowRowComparison(false)}
+        rowNumbers={comparisonRowNumbers}
+        sessionId={sessionId || ''}
+        title="Duplicate Pair Row Comparison"
+      />
     </Card>
   );
 }

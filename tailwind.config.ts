@@ -81,7 +81,7 @@ export default {
   				}
   			}
   		},
-  		linearGradientColors: ({ }) => ({
+  		linearGradientColors: {
   			'primary-gradient': [
   				'#20160C',
   				'#090909'
@@ -91,14 +91,12 @@ export default {
   				'#1D1204'
   			],
   			'accent-gradient': ['#FFC400', '#FA7225', '#DC3589']
-
-  		,
+  		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out'
   		}
-	})
+	}
   },
   plugins: [require("tailwindcss-animate")],
 } satisfies Config
-}

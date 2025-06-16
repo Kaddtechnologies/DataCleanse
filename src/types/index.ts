@@ -38,4 +38,17 @@ export interface DuplicatePair {
   aiConfidence?: string;
   aiReasoning?: string;
   status: 'pending' | 'merged' | 'not_duplicate' | 'skipped' | 'duplicate';
+  
+  // Enhanced AI Analysis Results (for audit and export)
+  enhancedConfidence?: string; // High/Medium/Low from smart analysis
+  enhancedScore?: number; // Smart rules enhanced score (0-100)
+  originalScore?: number; // Original score before enhancement (for comparison)
+  scoreChangeReason?: string; // Explanation of why score changed
+  lastAnalyzed?: string; // Timestamp of last AI analysis
+  
+  // Cached AI Analysis Result (to avoid repeated API calls)
+  cachedAiAnalysis?: any; // Store the complete AnalyzeDuplicateConfidenceOutput
 }
+
+// Export all business rules types
+export * from './business-rules';

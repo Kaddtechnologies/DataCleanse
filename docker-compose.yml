@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mdm-postgres
+    environment:
+      POSTGRES_DB: mdm_dedup
+      POSTGRES_USER: mdm_user
+      POSTGRES_PASSWORD: mdm_password123
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      PGPORT: 5433
+    ports:
+      - "5433:5433"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/01-init-db.sql
+    networks:
+      - mdm-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mdm_user -d mdm_dedup"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis for caching (optional - for future enhancement)
+  redis:
+    image: redis:7-alpine
+    container_name: mdm-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mdm-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  mdm-network:
+    driver: bridge

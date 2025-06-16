@@ -2,30 +2,32 @@
 
 import type { DragEvent, ChangeEvent } from 'react';
 import { type JSX, useState, useEffect, useCallback, useRef } from 'react';
-import { UploadCloud, FileText, CheckCircle, ScanLine, ArrowRight, Brain, Eye, Merge, Users, Loader2, HelpCircle, BookOpen, Play, X, ChevronRight, ChevronLeft } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { LoadingOverlay } from '@/components/loading-overlay';
+import { useSessionPersistence } from '@/hooks/use-session-persistence';
+import { FileConflictDialog } from '@/components/file-conflict-dialog';
+import { DeleteInvalidRecordsModal } from '@/components/delete-invalid-records-modal';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from "@/hooks/use-toast";
 import * as XLSX from 'xlsx';
 import readXlsxFile from 'read-excel-file';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Slider } from "@/components/ui/slider"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Badge } from "@/components/ui/badge"
-import { environment } from '../../environment';
-
-// Define the logical fields the backend expects for mapping
-const LOGICAL_FIELDS = [
-  { key: 'tpi', label: 'Unique ID/TPI (for info)', required: false },
-  { key: 'customer_name', label: 'Customer Name (for matching)', required: true },
-  { key: 'address', label: 'Address (for matching)', required: false },
-  { key: 'city', label: 'City (for blocking/info)', required: false },
-  { key: 'country', label: 'Country (for info)', required: false },
-];
+// Environment import removed - not used in this file
+import { 
+  autoMapColumns, 
+  logMappingResults, 
+  validateRequiredMappings
+} from '@/lib/canonical-field-mapping';
+import { performComprehensiveValidation } from '@/utils/record-validation';
+import type { DuplicatePair } from '@/types';
+import {
+  FileUploadDisplay,
+  HelpSystem,
+  BlockingStrategyConfig,
+  ColumnMapping,
+  ResultsDisplay,
+  type BlockingStrategyConfigType
+} from './file-upload/index';
 
 const API_BASE_URL = ''; // Use relative URL for Next.js API routes
 
@@ -55,292 +57,91 @@ type DeduplicationResults = {
   total_potential_duplicates: number;
   kpi_metrics: DeduplicationKPIMetrics;
   stats: DeduplicationStats;
-  duplicates?: any[]; // Add optional duplicates array to match page.tsx expectations
+  duplicates?: any[];
 };
 
 type DeduplicationResponse = {
   message: string;
   results: DeduplicationResults;
   error: string | null;
+  sessionId?: string;
+  fromSessionLoad?: boolean;
 };
 
 interface FileUploadProps {
   onFileProcessed: (data: DeduplicationResponse) => void;
+  onLoadSession?: (sessionId: string) => void;
+  onFileReady?: () => void;
+  sessionToLoad?: string | null;
+  sessionStats?: {
+    total_pairs: number;
+    pending: number;
+    duplicate: number;
+    not_duplicate: number;
+    skipped: number;
+    auto_merged: number;
+  } | null;
 }
 
-// Define blocking strategies with descriptions
-const BLOCKING_STRATEGIES = [
-  {
-    id: 'use_prefix',
-    name: 'Prefix Blocking',
-    description: 'Groups records with the same beginning characters of names'
-  },
-  {
-    id: 'use_metaphone',
-    name: 'Metaphone',
-    description: 'Uses phonetic algorithm to match names that sound similar but spelled differently'
-  },
-  {
-    id: 'use_soundex',
-    name: 'Soundex',
-    description: 'Groups names with similar pronunciation regardless of spelling variations'
-  },
-  {
-    id: 'use_ngram',
-    name: 'N-Gram',
-    description: 'Matches text patterns by breaking names into character sequences'
-  }
-];
+// Processing time estimates per 100 records (in seconds)
+const PROCESSING_TIMES = {
+  prefix: 0.03,
+  metaphone: 0.024,
+  soundex: 0.035,
+  ngram: 0.26,
+  ai: 2.95,
+  prefix_ai: 2.98,
+  all_ai: 3.30
+};
 
-// Help Guide Content
-const HELP_GUIDE_CONTENT = `# Master Data Cleansing Help Guide
-
-This guide explains how to use the Master Data Cleansing tool to find and manage duplicate records in your data.
-
-## What This Tool Does
-
-The Master Data Cleansing tool helps you find duplicate company or customer records in your Excel or CSV files. Think of it like a smart spell-checker, but for duplicate entries instead of misspelled words.
-
-## Blocking Strategies Explained
-
-When working with large files, searching for duplicates can be time-consuming. "Blocking strategies" help speed things up by focusing your search. Think of these like different ways to sort a deck of cards before looking for matches.
-
-### Available Strategies
-
-#### 1. Prefix Blocking
-- **What it does:** Groups records that start with the same first few letters in their name and city
-- **When to use:** Always a good starting point - very fast with good results
-- **Example:** "Acme Corporation" in "New York" and "ACME Corp" in "New York" would be grouped together
-
-#### 2. Metaphone Blocking
-- **What it does:** Groups records that sound similar when pronounced
-- **When to use:** Good for company names that might be spelled differently but sound the same
-- **Example:** "Acme" and "Akme" would be grouped together because they sound alike
-
-#### 3. Soundex Blocking
-- **What it does:** Another way to group records that sound similar (slightly different than Metaphone)
-- **When to use:** Use alongside Metaphone for better coverage
-- **Example:** "Smith" and "Smyth" would be grouped together
-
-#### 4. N-gram Blocking
-- **What it does:** Groups records that share parts of words
-- **When to use:** Good for catching misspellings or slight variations in names
-- **Example:** "Johnson" and "Johnsen" would be grouped together
-
-#### 5. AI Scoring
-- **What it does:** Uses artificial intelligence to better determine if records are truly duplicates
-- **When to use:** For final verification when you need high accuracy
-- **Note:** Significantly slows down processing
-
-## Recommended Settings for Different Situations
-
-### Quick Check of Small Files (Under 1,000 Records)
-- ✅ Prefix Blocking
-- ✅ Metaphone Blocking
-- ❌ Soundex Blocking
-- ❌ N-gram Blocking
-- ❌ AI Scoring
-
-### Medium-Sized Files (1,000-10,000 Records)
-- ✅ Prefix Blocking
-- ✅ Metaphone Blocking
-- ❌ Soundex Blocking
-- ❌ N-gram Blocking
-- ❌ AI Scoring
-
-### Large Files (10,000-100,000 Records)
-- ✅ Prefix Blocking
-- ❌ Metaphone Blocking
-- ❌ Soundex Blocking
-- ❌ N-gram Blocking
-- ❌ AI Scoring
-
-### Very Large Files (Over 100,000 Records)
-- ✅ Prefix Blocking only
-- ❌ All other options
-
-### When Accuracy is Critical
-- ✅ Prefix Blocking
-- ✅ Metaphone Blocking
-- ✅ Soundex Blocking
-- ✅ N-gram Blocking
-- ✅ AI Scoring
-- **Note:** This will be much slower but will find more potential duplicates
-
-## Similarity Thresholds
-
-The similarity threshold controls how similar records need to be to count as potential duplicates:
-
-- **Name Threshold (default 70%):** How similar the names need to be
-- **Overall Threshold (default 70%):** How similar the records are overall
-
-### Adjusting Thresholds
-
-- **Lower thresholds (60-70%):** Find more potential duplicates, but may include false matches
-- **Medium thresholds (70-80%):** Balanced approach (recommended)
-- **Higher thresholds (80-90%):** Only find very obvious duplicates
-
-## Troubleshooting
-
-### Common Issues
-
-1. **No duplicates found**
-   - Try lowering the similarity thresholds
-   - Try different blocking strategies
-   - Check your column mapping to make sure the right fields are being compared
-
-2. **Too many false matches**
-   - Increase the similarity thresholds
-   - Make sure your column mapping is correct
-
-3. **Processing is very slow**
-   - Reduce the number of blocking strategies
-   - Turn off N-gram Blocking and AI Scoring
-   - Use only Prefix Blocking for very large files
-
-4. **System seems frozen**
-   - Large files with multiple blocking strategies can take a long time
-   - Start with just Prefix Blocking and add others if needed
-
-## Quick Tips
-
-- Always map the "customer_name" field to the column containing company or customer names
-- Start with Prefix Blocking only to get quick initial results
-- Add more blocking strategies one at a time if you need more thorough results
-- The threshold settings of 70% for both name and overall similarity work well for most cases
-- Save AI Scoring for final verification of important data only
-
-## Need More Help?
-
-Contact your system administrator or the help desk for assistance.`;
-
-// Interactive Tour Steps
-const TOUR_STEPS = [
-  {
-    id: 'blocking-section',
-    title: 'Blocking Strategy Configuration',
-    content: 'This section controls how the system searches for duplicates. Blocking strategies help speed up processing by grouping similar records together before detailed comparison.',
-    position: 'bottom'
-  },
-  {
-    id: 'prefix-strategy',
-    title: 'Prefix Blocking',
-    content: 'The most efficient strategy - groups records that start with the same letters. Always recommended as a starting point.',
-    position: 'right'
-  },
-  {
-    id: 'metaphone-strategy',
-    title: 'Metaphone Blocking',
-    content: 'Groups records that sound similar when pronounced. Good for catching spelling variations of company names.',
-    position: 'right'
-  },
-  {
-    id: 'soundex-strategy',
-    title: 'Soundex Blocking',
-    content: 'Another phonetic matching algorithm. Use alongside Metaphone for better coverage of sound-alike names.',
-    position: 'right'
-  },
-  {
-    id: 'ngram-strategy',
-    title: 'N-Gram Blocking',
-    content: 'Matches text patterns by breaking names into character sequences. More thorough but significantly slower.',
-    position: 'right'
-  },
-  {
-    id: 'ai-strategy',
-    title: 'AI Scoring',
-    content: 'Uses artificial intelligence for the most accurate duplicate detection. Warning: This dramatically increases processing time.',
-    position: 'right'
-  },
-  {
-    id: 'thresholds-section',
-    title: 'Similarity Thresholds',
-    content: 'These sliders control how similar records need to be to count as potential duplicates. Lower values find more matches but may include false positives.',
-    position: 'top'
-  },
-  {
-    id: 'column-mapping',
-    title: 'Column Mapping Section',
-    content: 'This is where you tell the system which columns in your Excel file contain which type of data. This step is crucial for accurate duplicate detection.',
-    position: 'top'
-  },
-  {
-    id: 'customer_name-mapping',
-    title: 'Customer Name Mapping (Required)',
-    content: 'You MUST map this field to the column containing company or customer names. The system cannot automatically detect which column contains the actual customer names - you need to manually select the correct one.',
-    position: 'right'
-  },
-  {
-    id: 'address-mapping',
-    title: 'Address Mapping (Optional)',
-    content: 'Map this to your address column if available. Address information helps improve duplicate detection accuracy.',
-    position: 'right'
-  },
-  {
-    id: 'city-mapping',
-    title: 'City Mapping (Optional)',
-    content: 'City information is used for blocking and provides additional context for duplicate detection.',
-    position: 'right'
-  },
-  {
-    id: 'country-mapping',
-    title: 'Country Mapping (Optional)',
-    content: 'Country information helps provide geographic context and can improve matching accuracy.',
-    position: 'right'
-  },
-  {
-    id: 'tpi-mapping',
-    title: 'Unique ID/TPI Mapping (Optional)',
-    content: 'If your data has unique identifiers, map them here. This helps track records through the deduplication process.',
-    position: 'right'
-  }
-];
-
-export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
+export function FileUpload({ onFileProcessed, onLoadSession, onFileReady, sessionToLoad, sessionStats }: FileUploadProps): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [rowCount, setRowCount] = useState<number | null>(null);
   const { toast } = useToast();
+  
+  // Database session management
+  const { 
+    createSession, 
+    saveDuplicatePairs, 
+    currentSession, 
+    isLoading: isDbLoading, 
+    error: dbError 
+  } = useSessionPersistence();
+  
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [columnHeaders, setColumnHeaders] = useState<string[]>([]);
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // File conflict detection state
+  const [showFileConflictDialog, setShowFileConflictDialog] = useState(false);
+  const [existingSession, setExistingSession] = useState<any>(null);
+  const [suggestedFilename, setSuggestedFilename] = useState<string>('');
   const [deduplicationResults, setDeduplicationResults] = useState<DeduplicationResponse | null>(null);
   
+  // Data validation modal state
+  const [showValidationModal, setShowValidationModal] = useState(false);
+  const [validationPairs, setValidationPairs] = useState<DuplicatePair[]>([]);
+  const [isDeletingInvalidRecords, setIsDeletingInvalidRecords] = useState(false);
+  
   // Blocking strategy configuration state
-  const [usePrefix, setUsePrefix] = useState(true);
-  const [useMetaphone, setUseMetaphone] = useState(false);
-  const [useSoundex, setUseSoundex] = useState(false);
-  const [useNgram, setUseNgram] = useState(false);
-  const [useAi, setUseAi] = useState(false);
-  const [nameThreshold, setNameThreshold] = useState(70);
-  const [overallThreshold, setOverallThreshold] = useState(70);
-  
-  // Help system state
-  const [showHelpOptions, setShowHelpOptions] = useState(false);
-  const [showReferenceGuide, setShowReferenceGuide] = useState(false);
-  const [showInteractiveTour, setShowInteractiveTour] = useState(false);
-  const [currentTourStep, setCurrentTourStep] = useState(0);
-  const [tourHighlightedElement, setTourHighlightedElement] = useState<string | null>(null);
-  
-  // Refs for tour highlighting and file input
-  const blockingSectionRef = useRef<HTMLDivElement>(null);
-  const columnMappingRef = useRef<HTMLDivElement>(null);
-  const thresholdsSectionRef = useRef<HTMLDivElement>(null);
+  const [blockingConfig, setBlockingConfig] = useState<BlockingStrategyConfigType>({
+    usePrefix: true,
+    useMetaphone: false,
+    useSoundex: false,
+    useNgram: false,
+    useAi: false,
+    nameThreshold: 70,
+    overallThreshold: 70
+  });
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // Processing time estimates per 100 records (in seconds)
-  const PROCESSING_TIMES = {
-    prefix: 0.54,
-    metaphone: 0.89,
-    soundex: 1.27,
-    ngram: 9.03,
-    ai: 53.16,
-    prefix_ai: 54,
-    all_ai: 61.41
-  };
+  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
+  const [estimatedProcessingTime, setEstimatedProcessingTime] = useState<{ minutes: number; seconds: number; totalTimeSeconds: number } | null>(null);
   
   // Calculate estimated completion time based on selected strategies and dataset size
   const calculateEstimatedTime = useCallback(() => {
@@ -349,19 +150,19 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     let timePerHundredRecords = 0;
     
     // Calculate base time based on selected blocking strategies
-    if (useAi) {
-      if (usePrefix && useMetaphone && useSoundex && useNgram) {
+    if (blockingConfig.useAi) {
+      if (blockingConfig.usePrefix && blockingConfig.useMetaphone && blockingConfig.useSoundex && blockingConfig.useNgram) {
         timePerHundredRecords = PROCESSING_TIMES.all_ai;
-      } else if (usePrefix) {
+      } else if (blockingConfig.usePrefix) {
         timePerHundredRecords = PROCESSING_TIMES.prefix_ai;
       } else {
         timePerHundredRecords = PROCESSING_TIMES.ai;
       }
     } else {
-      if (usePrefix) timePerHundredRecords += PROCESSING_TIMES.prefix;
-      if (useMetaphone) timePerHundredRecords += PROCESSING_TIMES.metaphone;
-      if (useSoundex) timePerHundredRecords += PROCESSING_TIMES.soundex;
-      if (useNgram) timePerHundredRecords += PROCESSING_TIMES.ngram;
+      if (blockingConfig.usePrefix) timePerHundredRecords += PROCESSING_TIMES.prefix;
+      if (blockingConfig.useMetaphone) timePerHundredRecords += PROCESSING_TIMES.metaphone;
+      if (blockingConfig.useSoundex) timePerHundredRecords += PROCESSING_TIMES.soundex;
+      if (blockingConfig.useNgram) timePerHundredRecords += PROCESSING_TIMES.ngram;
     }
     
     // Calculate total time in seconds
@@ -372,157 +173,18 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     const seconds = Math.round(totalTimeSeconds % 60);
     
     return { minutes, seconds, totalTimeSeconds };
-  }, [rowCount, usePrefix, useMetaphone, useSoundex, useNgram, useAi]);
+  }, [rowCount, blockingConfig]);
 
-  // Help system functions
-  const startInteractiveTour = useCallback(() => {
-    setShowHelpOptions(false);
-    setShowInteractiveTour(true);
-    setCurrentTourStep(0);
-    setTourHighlightedElement(TOUR_STEPS[0].id);
+  // Auto-mapping with enhanced logging
+  const performAutoMapping = useCallback((headers: string[]) => {
+    const result = autoMapColumns(headers);
+    
+    // Log the detailed results for debugging
+    logMappingResults(headers, result);
+    
+    // Set the column mappings
+    setColumnMap(result.mappings);
   }, []);
-
-  const nextTourStep = useCallback(() => {
-    if (currentTourStep < TOUR_STEPS.length - 1) {
-      const nextStep = currentTourStep + 1;
-      setCurrentTourStep(nextStep);
-      setTourHighlightedElement(TOUR_STEPS[nextStep].id);
-    } else {
-      setShowInteractiveTour(false);
-      setTourHighlightedElement(null);
-      setCurrentTourStep(0);
-    }
-  }, [currentTourStep]);
-
-  const previousTourStep = useCallback(() => {
-    if (currentTourStep > 0) {
-      const prevStep = currentTourStep - 1;
-      setCurrentTourStep(prevStep);
-      setTourHighlightedElement(TOUR_STEPS[prevStep].id);
-    }
-  }, [currentTourStep]);
-
-  const closeTour = useCallback(() => {
-    setShowInteractiveTour(false);
-    setTourHighlightedElement(null);
-    setCurrentTourStep(0);
-  }, []);
-
-  const openReferenceGuide = useCallback(() => {
-    setShowHelpOptions(false);
-    setShowReferenceGuide(true);
-  }, []);
-
-  const closeReferenceGuide = useCallback(() => {
-    setShowReferenceGuide(false);
-  }, []);
-
-  // Markdown renderer for help guide
-  const renderMarkdown = useCallback((content: string) => {
-    // Simple markdown renderer for basic formatting
-    return content
-      .split('\n')
-      .map((line, index) => {
-        // Headers
-        if (line.startsWith('### ')) {
-          return <h3 key={index} className="text-lg font-semibold mt-4 mb-2 text-gray-800">{line.slice(4)}</h3>;
-        }
-        if (line.startsWith('## ')) {
-          return <h2 key={index} className="text-xl font-bold mt-6 mb-3 text-gray-900">{line.slice(3)}</h2>;
-        }
-        if (line.startsWith('# ')) {
-          return <h1 key={index} className="text-2xl font-bold mt-8 mb-4 text-gray-900">{line.slice(2)}</h1>;
-        }
-        
-        // Lists
-        if (line.startsWith('- ')) {
-          return <li key={index} className="ml-4 mb-1 text-gray-700">{line.slice(2)}</li>;
-        }
-        if (line.match(/^\d+\. /)) {
-          return <li key={index} className="ml-4 mb-1 text-gray-700 list-decimal">{line.replace(/^\d+\. /, '')}</li>;
-        }
-        
-        // Bold text
-        if (line.includes('**')) {
-          const parts = line.split('**');
-          return (
-            <p key={index} className="mb-2 text-gray-700">
-              {parts.map((part, i) => 
-                i % 2 === 1 ? <strong key={i} className="font-semibold">{part}</strong> : part
-              )}
-            </p>
-          );
-        }
-        
-        // Regular paragraphs
-        if (line.trim()) {
-          return <p key={index} className="mb-2 text-gray-700">{line}</p>;
-        }
-        
-        // Empty lines
-        return <div key={index} className="mb-2"></div>;
-      });
-  }, []);
-
-  // Simple normalization function
-  const normalize = useCallback((text: string): string => {
-    text = String(text).toLowerCase().trim();
-    text = text.replace(/[^a-z0-9\s]/g, " ");
-    text = text.replace(/\s+/g, " ");
-    return text;
-  }, []);
-
-  const CANDIDATE_MAP: Record<string, string[]> = {
-    "customer_name": ["customer", "name", "account", "client"],
-    "address": ["address", "addr", "street", "road"],
-    "city": ["city", "town"],
-    "country": ["country", "nation", "cntry", "co"],
-    "tpi": [
-      "tpi", 
-      "tpi number", 
-      "tpi nummer", 
-      "tpi id", 
-      "tpi code", 
-      "tpi key", 
-      "primary key", 
-      "unique identifier", 
-      "record id",
-      "master id",
-      "customer id tpi",
-      "tpi reference",
-      "tpi ref",
-      "identifier",
-      "unique id"
-    ],
-  };
-
-  const autoMapColumns = useCallback((headers: string[]) => {
-    const detected: Record<string, string | undefined> = {};
-    LOGICAL_FIELDS.forEach(field => detected[field.key] = undefined);
-
-    // First pass: Look for TPI-specific terms (prioritize explicit TPI references)
-    headers.forEach(col => {
-      const col_n = normalize(col);
-      
-      // Check for explicit TPI references first
-      const tpiSpecificTerms = ["tpi", "tpi number", "tpi nummer", "tpi id", "tpi code", "tpi key", "tpi reference", "tpi ref"];
-      if (tpiSpecificTerms.some(hint => col_n.includes(hint)) && detected.tpi === undefined) {
-        detected.tpi = col;
-      }
-    });
-
-    // Second pass: Map other fields and remaining TPI terms
-    headers.forEach(col => {
-      const col_n = normalize(col);
-      for (const key in CANDIDATE_MAP) {
-        if (CANDIDATE_MAP[key].some(hint => col_n.includes(hint)) && detected[key] === undefined) {
-          detected[key] = col;
-        }
-      }
-    });
-
-    setColumnMap(detected as Record<string, string>);
-  }, [normalize]);
 
   const getFileRowCount = useCallback(async (file: File) => {
     try {
@@ -570,53 +232,104 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       }
       
       setColumnHeaders(headers);
-      autoMapColumns(headers);
+      performAutoMapping(headers);
     } catch (err) {
       console.error("Error extracting headers:", err);
       toast({ title: "Error", description: "Failed to extract column headers.", variant: "destructive" });
       setColumnHeaders([]);
       setColumnMap({});
     }
-  }, [toast, autoMapColumns]);
+  }, [toast, performAutoMapping]);
 
   const resetState = useCallback(() => {
     setColumnHeaders([]);
     setColumnMap({});
     setRowCount(null);
     setDeduplicationResults(null);
-    setUsePrefix(true);
-    setUseMetaphone(false);
-    setUseSoundex(false);
-    setUseNgram(false);
-    setUseAi(false);
-    setNameThreshold(70);
-    setOverallThreshold(70);
+    setBlockingConfig({
+      usePrefix: true,
+      useMetaphone: false,
+      useSoundex: false,
+      useNgram: false,
+      useAi: false,
+      nameThreshold: 70,
+      overallThreshold: 70
+    });
     setEstimatedProcessingTime(null);
   }, []);
 
   const handleFileSelection = useCallback(async (selectedFile: File | null) => {
-    setFile(selectedFile);
     if (selectedFile) {
-      // Check file size limit (100MB)
-      const maxSizeInBytes = 100 * 1024 * 1024; // 100MB in bytes
-      if (selectedFile.size > maxSizeInBytes) {
-        toast({
-          title: "File Too Large",
-          description: "Please select a file smaller than 100MB.",
-          variant: "destructive"
-        });
-        return;
-      }
+      // Show loading overlay immediately
+      setShowLoadingOverlay(true);
       
-      await extractColumnHeaders(selectedFile);
-      await getFileRowCount(selectedFile);
-      toast({ title: "File Selected", description: selectedFile.name });
+      try {
+        // Check file size limit (100MB)
+        const maxSizeInBytes = 100 * 1024 * 1024; // 100MB in bytes
+        if (selectedFile.size > maxSizeInBytes) {
+          toast({
+            title: "File Too Large",
+            description: "Please select a file smaller than 100MB.",
+            variant: "destructive"
+          });
+          // Clear the file input
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          setShowLoadingOverlay(false);
+          return;
+        }
+        
+        // Check for file conflicts before proceeding
+        try {
+          const response = await fetch('/api/sessions/check-filename', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ fileName: selectedFile.name }),
+          });
+          
+          if (response.ok) {
+            const conflictData = await response.json();
+            
+            if (conflictData.exists) {
+              // Hide loading overlay before showing conflict dialog
+              setShowLoadingOverlay(false);
+              // Show conflict dialog
+              setExistingSession(conflictData.existingSession);
+              setSuggestedFilename(conflictData.suggestedFilename);
+              setShowFileConflictDialog(true);
+              setFile(selectedFile); // Store file for later use
+              return; // Don't proceed with normal file processing yet
+            }
+          }
+        } catch (error) {
+          console.error('Error checking for file conflicts:', error);
+          // Continue with normal processing if conflict check fails
+        }
+        
+        // No conflict, proceed with normal file processing
+        setFile(selectedFile);
+        await extractColumnHeaders(selectedFile);
+        await getFileRowCount(selectedFile);
+        toast({ title: "File Selected", description: selectedFile.name });
+        
+        // Notify that file is ready for processing
+        if (onFileReady) {
+          onFileReady();
+        }
+      } finally {
+        // Hide loading overlay after processing
+        setShowLoadingOverlay(false);
+      }
     } else {
       // Clear the file input value to allow re-selecting the same file
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
       
+      setFile(null);
       resetState();
       // When file is removed, call onFileProcessed with empty results to clear the table
       onFileProcessed({
@@ -645,10 +358,11 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
             total_potential_duplicate_records: 0
           }
         },
-        error: null
+        error: null,
+        sessionId: undefined // Clear the session ID to update header status
       });
     }
-  }, [extractColumnHeaders, getFileRowCount, toast, resetState, onFileProcessed]);
+  }, [extractColumnHeaders, getFileRowCount, toast, resetState, onFileProcessed, onFileReady]);
 
   const handleDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -658,19 +372,19 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     if (droppedFile) {
       void handleFileSelection(droppedFile);
     }
-  }, [handleFileSelection, setIsDragging]);
+  }, [handleFileSelection]);
 
   const handleDragOver = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(true);
-  }, [setIsDragging]);
+  }, []);
 
   const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     setIsDragging(false);
-  }, [setIsDragging]);
+  }, []);
 
   const handleFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -712,8 +426,370 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
     }
   }, []);
 
-  const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
-  const [estimatedProcessingTime, setEstimatedProcessingTime] = useState<{ minutes: number; seconds: number; totalTimeSeconds: number } | null>(null);
+  // Extract original file data for row-by-row comparison
+  const extractOriginalFileData = useCallback(async (file: File): Promise<{ data: any[]; headers: string[] } | null> => {
+    try {
+      if (file.name.toLowerCase().endsWith('.csv')) {
+        // Handle CSV files
+        const text = await file.text();
+        const lines = text.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        
+        const data: Record<string, any>[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+            const row: Record<string, any> = { rowNumber: i };
+            headers.forEach((header, index) => {
+              row[header] = values[index] || '';
+            });
+            data.push(row);
+          }
+        }
+        return { data, headers };
+      } else {
+        // Handle Excel files
+        const buffer = await file.arrayBuffer();
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        
+        if (jsonData.length < 2) return null;
+        
+        const headers = jsonData[0] as string[];
+        const data: Record<string, any>[] = [];
+        
+        for (let i = 1; i < jsonData.length; i++) {
+          const values = jsonData[i] as any[];
+          if (values.some(v => v !== undefined && v !== null && v !== '')) {
+            const row: Record<string, any> = { rowNumber: i };
+            headers.forEach((header, index) => {
+              row[header] = values[index] || '';
+            });
+            data.push(row);
+          }
+        }
+        return { data, headers };
+      }
+    } catch (error) {
+      console.error('Error extracting original file data:', error);
+      return null;
+    }
+  }, []);
+
+  // Session loading function to restore file upload state
+  const loadSessionState = useCallback(async (sessionId: string) => {
+    // Show loading overlay while loading session
+    setShowLoadingOverlay(true);
+    
+    try {
+      const response = await fetch(`/api/sessions/${sessionId}/load`);
+      if (!response.ok) {
+        throw new Error('Failed to load session');
+      }
+      
+      const sessionData = await response.json();
+      
+      if (sessionData.success) {
+        // Restore session info
+        setCurrentSessionId(sessionId);
+        
+        // Create a mock file object for the session's file with correct file size
+        const fileName = sessionData.session.file_name;
+        const fileSize = sessionData.session.file_size || 0;
+        
+        // Create a mock blob with the correct size for display purposes
+        const mockBlob = new Blob([''], { type: 'text/csv' });
+        const mockFile = new File([mockBlob], fileName, { type: 'text/csv' });
+        
+        // Override the size property to show the correct file size
+        Object.defineProperty(mockFile, 'size', {
+          value: fileSize,
+          writable: false
+        });
+        
+        setFile(mockFile);
+        
+        // Restore blocking configuration from session config
+        const config = sessionData.configuration || {};
+        setBlockingConfig({
+          usePrefix: config.use_prefix !== undefined ? config.use_prefix : true,
+          useMetaphone: config.use_metaphone !== undefined ? config.use_metaphone : false,
+          useSoundex: config.use_soundex !== undefined ? config.use_soundex : false,
+          useNgram: config.use_ngram !== undefined ? config.use_ngram : false,
+          useAi: config.use_ai !== undefined ? config.use_ai : false,
+          nameThreshold: config.name_threshold || 70,
+          overallThreshold: config.overall_threshold || 70
+        });
+        
+        // Extract and restore column mappings from the first duplicate pair
+        if (sessionData.duplicate_pairs && sessionData.duplicate_pairs.length > 0) {
+          const firstPair = sessionData.duplicate_pairs[0];
+          
+          // Extract column headers from the record structure
+          const record1 = firstPair.record1 || {};
+          const record2 = firstPair.record2 || {};
+          
+          // Get all unique field names from both records
+          const allFields = new Set([
+            ...Object.keys(record1),
+            ...Object.keys(record2)
+          ]);
+          
+          // Filter out system fields and create column headers
+          const systemFields = ['id', 'rowNumber', 'overall_score', 'isLowConfidence'];
+          const headers = Array.from(allFields).filter(field => !systemFields.includes(field));
+          setColumnHeaders(headers);
+          
+          // Set up column mappings based on the fields we find
+          const mappings: Record<string, string> = {};
+          if (headers.includes('name')) mappings.customer_name = 'name';
+          if (headers.includes('address')) mappings.address = 'address';
+          if (headers.includes('city')) mappings.city = 'city';
+          if (headers.includes('country')) mappings.country = 'country';
+          if (headers.includes('tpi')) mappings.tpi = 'tpi';
+          
+          setColumnMap(mappings);
+          
+          // Estimate row count from duplicate pairs (this is approximate)
+          const estimatedRowCount = Math.max(
+            ...sessionData.duplicate_pairs.map((pair: any) => 
+              Math.max(
+                pair.record1?.rowNumber || 0,
+                pair.record2?.rowNumber || 0
+              )
+            )
+          );
+          setRowCount(estimatedRowCount);
+        }
+        
+        // Calculate confidence level statistics from duplicate pairs
+        const duplicatePairs = sessionData.duplicate_pairs || [];
+        const highConfidenceCount = duplicatePairs.filter((pair: any) => {
+          const score = pair.enhancedScore || (pair.similarityScore * 100);
+          return score >= 98;
+        }).length;
+        const mediumConfidenceCount = duplicatePairs.filter((pair: any) => {
+          const score = pair.enhancedScore || (pair.similarityScore * 100);
+          return score >= 90 && score < 98;
+        }).length;
+        const lowConfidenceCount = duplicatePairs.filter((pair: any) => {
+          const score = pair.enhancedScore || (pair.similarityScore * 100);
+          return score < 90;
+        }).length;
+
+        // Set deduplication results to show the session has been processed with real data
+        const sessionResults = {
+          message: "Session loaded successfully",
+          results: {
+            duplicate_group_count: sessionData.statistics?.total_pairs || 0,
+            total_potential_duplicates: sessionData.statistics?.total_pairs || 0,
+            kpi_metrics: {
+              auto_merge: sessionData.statistics?.merged + sessionData.statistics?.duplicate || 0,
+              needs_review: sessionData.statistics?.pending || 0,
+              needs_ai: 0,
+              total_blocks: 0
+            },
+            stats: {
+              high_confidence_duplicates_groups: highConfidenceCount,
+              medium_confidence_duplicates_groups: mediumConfidenceCount,
+              low_confidence_duplicates_groups: lowConfidenceCount,
+              block_stats: {
+                total_blocks: 0,
+                max_block_size: 0,
+                avg_block_size: 0,
+                records_in_blocks: 0
+              },
+              total_master_records_with_duplicates: sessionData.statistics?.total_pairs || 0,
+              total_potential_duplicate_records: sessionData.statistics?.total_pairs || 0
+            }
+          },
+          error: null,
+          sessionId: sessionId
+        };
+        
+        setDeduplicationResults(sessionResults);
+        
+        // Notify parent component that file is ready
+        if (onFileReady) {
+          onFileReady();
+        }
+        
+        // Call onFileProcessed to initialize the data grid with session data
+        onFileProcessed({
+          ...sessionResults,
+          sessionId: sessionId,
+          fromSessionLoad: true
+        });
+        
+        toast({ 
+          title: "Session Loaded", 
+          description: `Restored session "${sessionData.session.session_name}" with ${sessionData.statistics?.total_pairs || 0} duplicate pairs.`
+        });
+      }
+    } catch (error) {
+      console.error('Error loading session in FileUpload:', error);
+      toast({
+        title: "Error Loading Session",
+        description: "Failed to restore file upload state from session",
+        variant: "destructive"
+      });
+    } finally {
+      // Hide loading overlay after session loading completes
+      setShowLoadingOverlay(false);
+    }
+  }, [setCurrentSessionId, setFile, setBlockingConfig, setColumnHeaders, setColumnMap, setRowCount, setDeduplicationResults, onFileReady, onFileProcessed, toast]);
+
+  // File conflict dialog handlers
+  const handleLoadExistingSession = useCallback(async (sessionId: string) => {
+    if (onLoadSession) {
+      setShowFileConflictDialog(false);
+      await onLoadSession(sessionId);
+    }
+  }, [onLoadSession]);
+
+  const handleCreateNewSession = useCallback(async (newFileName: string) => {
+    if (file) {
+      setShowFileConflictDialog(false);
+      // Show loading overlay while processing new file
+      setShowLoadingOverlay(true);
+      
+      try {
+        // Update the file name for processing with the new incremented name
+        const newFile = new File([file], newFileName, { type: file.type });
+        setFile(newFile);
+        await extractColumnHeaders(newFile);
+        await getFileRowCount(newFile);
+        toast({ title: "File Selected", description: newFile.name });
+      } finally {
+        setShowLoadingOverlay(false);
+      }
+    }
+  }, [file, extractColumnHeaders, getFileRowCount, toast]);
+
+  const handleConflictDialogClose = useCallback(() => {
+    // Clear the file and reset state when user cancels the conflict dialog
+    setShowFileConflictDialog(false);
+    setFile(null);
+    setExistingSession(null);
+    setSuggestedFilename('');
+    
+    // Clear the file input value to allow re-selecting files
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    
+    // Reset all related state
+    resetState();
+  }, [resetState]);
+
+  // Validation modal handlers
+  const handleDeleteInvalidRecords = useCallback(async (pairIds: string[]) => {
+    setIsDeletingInvalidRecords(true);
+    try {
+      // Call API to delete invalid pairs from database
+      const response = await fetch('/api/duplicate-pairs/delete-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ pairIds }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete invalid records');
+      }
+
+      const result = await response.json();
+      console.log('Deleted invalid pairs:', result);
+
+      // Update validation pairs by removing deleted ones
+      setValidationPairs(prevPairs => 
+        prevPairs.filter(pair => !pairIds.includes(pair.id))
+      );
+
+      // Show success message
+      toast({
+        title: "Records Deleted",
+        description: `Successfully removed ${pairIds.length} invalid record pairs`,
+        variant: "default"
+      });
+
+      // Close modal if no more pairs to validate
+      const remainingPairs = validationPairs.filter(pair => !pairIds.includes(pair.id));
+      const validationResults = performComprehensiveValidation(remainingPairs);
+      
+      if (validationResults.invalidDuplicatePairs.length === 0 && validationResults.completelyInvalidPairs.length === 0) {
+        setShowValidationModal(false);
+        setValidationPairs([]);
+      }
+
+    } catch (error) {
+      console.error('Error deleting invalid records:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete invalid records",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeletingInvalidRecords(false);
+    }
+  }, [validationPairs, toast]);
+
+  const handleMovePair = useCallback(async (pairId: string, targetCategory: 'valid' | 'invalid_duplicates' | 'completely_invalid') => {
+    try {
+      // Update pair status in database
+      const response = await fetch(`/api/duplicate-pairs/${pairId}/update`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          status: targetCategory === 'valid' ? 'pending' : 'skipped',
+          validation_category: targetCategory 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update pair status');
+      }
+
+      // Update local state
+      setValidationPairs(prevPairs => 
+        prevPairs.map(pair => 
+          pair.id === pairId 
+            ? { ...pair, status: targetCategory === 'valid' ? 'pending' as const : 'skipped' as const }
+            : pair
+        )
+      );
+
+      toast({
+        title: "Pair Updated",
+        description: `Moved pair to ${targetCategory.replace('_', ' ')} category`,
+        variant: "default"
+      });
+
+    } catch (error) {
+      console.error('Error moving pair:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update pair status",
+        variant: "destructive"
+      });
+    }
+  }, [toast]);
+
+  const handleRefreshGrid = useCallback(() => {
+    // Trigger a refresh of the data grid if needed
+    // This would typically call the parent component's refresh function
+    console.log('Refreshing data grid after validation changes');
+  }, []);
+
+  const handleCloseValidationModal = useCallback(() => {
+    setShowValidationModal(false);
+    setValidationPairs([]);
+  }, []);
 
   const handleDeduplicate = useCallback(async () => {
     if (!file || isLoading) return;
@@ -728,16 +804,17 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       return;
     }
 
+    // Calculate and set estimated processing time immediately
+    const estimatedTime = calculateEstimatedTime();
+    setEstimatedProcessingTime(estimatedTime);
+    
+    // Show loading overlay immediately when button is clicked
+    setShowLoadingOverlay(true);
     setIsLoading(true);
     setError(null);
     
-    // Calculate and set estimated processing time
-    const estimatedTime = calculateEstimatedTime();
-    setEstimatedProcessingTime(estimatedTime);
-    setShowLoadingOverlay(true);
-
     try {
-      // Process the file and prepare form data
+      // Process the file and prepare form data FIRST (before any database operations)
       const processedFile = await convertCsvToUtf8(file);
       const formData = new FormData();
       formData.append('file', processedFile);
@@ -750,15 +827,15 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       formData.append('tpi_column', columnMap.tpi || '');
       
       // Add blocking strategy configuration
-      formData.append('use_prefix', usePrefix.toString());
-      formData.append('use_metaphone', useMetaphone.toString());
-      formData.append('use_soundex', useSoundex.toString());
-      formData.append('use_ngram', useNgram.toString());
-      formData.append('use_ai', useAi.toString());
-      formData.append('name_threshold', nameThreshold.toString());
-      formData.append('overall_threshold', overallThreshold.toString());
+      formData.append('use_prefix', blockingConfig.usePrefix.toString());
+      formData.append('use_metaphone', blockingConfig.useMetaphone.toString());
+      formData.append('use_soundex', blockingConfig.useSoundex.toString());
+      formData.append('use_ngram', blockingConfig.useNgram.toString());
+      formData.append('use_ai', blockingConfig.useAi.toString());
+      formData.append('name_threshold', blockingConfig.nameThreshold.toString());
+      formData.append('overall_threshold', blockingConfig.overallThreshold.toString());
 
-      // Make API request
+      // Make API request to Python backend FIRST
       const response = await fetch(`${API_BASE_URL}/api/find-duplicates`, {
         method: 'POST',
         body: formData,
@@ -779,9 +856,141 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         throw new Error(responseData.message || responseData.error);
       }
 
-      // Update state with results
+      // Now create database session AFTER successful API response
+      const sessionName = `${file.name} - ${new Date().toLocaleString()}`;
+      const processingConfig: Record<string, any> = {
+        use_prefix: blockingConfig.usePrefix,
+        use_metaphone: blockingConfig.useMetaphone,
+        use_soundex: blockingConfig.useSoundex,
+        use_ngram: blockingConfig.useNgram,
+        use_ai: blockingConfig.useAi,
+        name_threshold: blockingConfig.nameThreshold,
+        overall_threshold: blockingConfig.overallThreshold
+      };
+      
+      const sessionId = await createSession(
+        sessionName,
+        file.name,
+        processingConfig
+      );
+
+      if (!sessionId) {
+        throw new Error('Failed to create database session');
+      }
+
+      setCurrentSessionId(sessionId);
+      
+      // Extract and store original file data for row-by-row comparison (in background)
+      try {
+        const extractedFileData = await extractOriginalFileData(file);
+        if (extractedFileData && extractedFileData.data.length > 0) {
+          const dataResponse = await fetch('/api/sessions/original-data', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              sessionId: sessionId,
+              fileData: extractedFileData.data,
+              headers: extractedFileData.headers
+            })
+          });
+          
+          if (!dataResponse.ok) {
+            console.warn('Failed to store original file data:', await dataResponse.text());
+          } else {
+            console.log('Successfully stored original file data with headers');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to store original file data:', error);
+        // Don't fail the whole process if we can't store original data
+      }
+
+      // Save duplicate pairs to database if we have results
+      if (sessionId && responseData.results.duplicates && responseData.results.duplicates.length > 0) {
+        console.log('Raw duplicates from backend:', responseData.results.duplicates.slice(0, 2)); // Log first 2 for debugging
+        
+        // Transform backend duplicate format to DuplicatePair format
+        const transformedDuplicates: DuplicatePair[] = responseData.results.duplicates.map((duplicate: any, index: number) => ({
+          id: `temp-${index}`, // Temporary ID, will be replaced by database
+          record1: duplicate.record1 || duplicate.Record1 || duplicate.master_record || duplicate.left_record || {},
+          record2: duplicate.record2 || duplicate.Record2 || duplicate.duplicate_record || duplicate.right_record || {},
+          similarityScore: duplicate.similarityScore || duplicate.similarity_score || duplicate.score || 0,
+          status: 'pending' as const,
+          aiConfidence: duplicate.aiConfidence || duplicate.ai_confidence,
+          aiReasoning: duplicate.aiReasoning || duplicate.ai_reasoning,
+          enhancedConfidence: duplicate.enhancedConfidence || duplicate.enhanced_confidence,
+          enhancedScore: duplicate.enhancedScore || duplicate.enhanced_score,
+          originalScore: duplicate.originalScore || duplicate.original_score || (duplicate.similarityScore || duplicate.similarity_score || duplicate.score || 0) * 100
+        }));
+        
+        console.log('Transformed duplicates:', transformedDuplicates.slice(0, 2)); // Log first 2 transformed
+        
+        // Validate that we have valid records before saving
+        const validDuplicates = transformedDuplicates.filter(dup => {
+          const hasValidRecord1 = dup.record1 && Object.keys(dup.record1).length > 0;
+          const hasValidRecord2 = dup.record2 && Object.keys(dup.record2).length > 0;
+          const hasValidScore = typeof dup.similarityScore === 'number' && !isNaN(dup.similarityScore);
+          
+          if (!hasValidRecord1 || !hasValidRecord2 || !hasValidScore) {
+            console.warn('Filtering out invalid duplicate pair:', {
+              hasValidRecord1,
+              hasValidRecord2,
+              hasValidScore,
+              record1Keys: dup.record1 ? Object.keys(dup.record1) : [],
+              record2Keys: dup.record2 ? Object.keys(dup.record2) : [],
+              similarityScore: dup.similarityScore
+            });
+            return false;
+          }
+          return true;
+        });
+        
+        console.log(`Saving ${validDuplicates.length} valid pairs out of ${transformedDuplicates.length} transformed`);
+        
+        // Perform comprehensive validation on the pairs
+        const validationResults = performComprehensiveValidation(validDuplicates);
+        
+        // Check if we have invalid pairs that need user attention
+        if (validationResults.invalidDuplicatePairs.length > 0 || validationResults.completelyInvalidPairs.length > 0) {
+          console.log('Validation found invalid pairs:', {
+            invalidDuplicates: validationResults.invalidDuplicatePairs.length,
+            completelyInvalid: validationResults.completelyInvalidPairs.length,
+            totalValid: validationResults.validPairs.length
+          });
+          
+          // Store all pairs for validation modal (including valid ones for context)
+          setValidationPairs(validDuplicates);
+          setShowValidationModal(true);
+          
+          // Show notification about validation findings
+          toast({
+            title: "Data Validation Required",
+            description: `Found ${validationResults.invalidDuplicatePairs.length + validationResults.completelyInvalidPairs.length} pairs requiring review`,
+            variant: "default"
+          });
+        }
+        
+        if (validDuplicates.length > 0) {
+          await saveDuplicatePairs(
+            sessionId,
+            validDuplicates,
+            { name: file.name, size: file.size },
+            processingConfig,
+            columnMap
+          );
+        } else {
+          console.warn('No valid duplicate pairs to save after transformation');
+        }
+      }
+      
+      // Update state with results and include session ID
       setDeduplicationResults(responseData);
-      onFileProcessed(responseData);
+      onFileProcessed({
+        ...responseData,
+        sessionId: sessionId
+      });
     } catch (error) {
       console.error("Deduplication API error:", error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process deduplication';
@@ -796,7 +1005,14 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       setIsLoading(false);
       setShowLoadingOverlay(false);
     }
-  }, [file, isLoading, convertCsvToUtf8, columnMap, toast, onFileProcessed, setDeduplicationResults, setError, setIsLoading, calculateEstimatedTime]);
+  }, [file, isLoading, convertCsvToUtf8, columnMap, toast, onFileProcessed, setDeduplicationResults, setError, setIsLoading, calculateEstimatedTime, blockingConfig, createSession, saveDuplicatePairs, extractOriginalFileData]);
+
+  // Effect to handle session loading
+  useEffect(() => {
+    if (sessionToLoad) {
+      loadSessionState(sessionToLoad);
+    }
+  }, [sessionToLoad, loadSessionState]);
 
   useEffect(() => {
     // Reset progress and row count if file is removed
@@ -808,327 +1024,52 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
       setColumnMap({});
       setDeduplicationResults(null);
       setError(null);
-      setUsePrefix(true);
-      setUseMetaphone(false);
-      setUseSoundex(false);
-      setUseNgram(false);
-      setUseAi(false);
-      setNameThreshold(70);
-      setOverallThreshold(70);
+      setBlockingConfig({
+        usePrefix: true,
+        useMetaphone: false,
+        useSoundex: false,
+        useNgram: false,
+        useAi: false,
+        nameThreshold: 70,
+        overallThreshold: 70
+      });
       setEstimatedProcessingTime(null);
     }
   }, [file]); // Add file as dependency
 
-  // Handle tour highlighting
-  useEffect(() => {
-    if (showInteractiveTour && tourHighlightedElement) {
-      const element = document.getElementById(tourHighlightedElement);
-      if (element) {
-        // Add tour highlight styles
-        element.style.position = 'relative';
-        element.style.zIndex = '51';
-        element.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.5), 0 0 0 8px rgba(59, 130, 246, 0.2)';
-        element.style.borderRadius = '8px';
-        element.style.transition = 'all 0.3s ease';
-        
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        
-        return () => {
-          // Reset styles
-          element.style.position = '';
-          element.style.zIndex = '';
-          element.style.boxShadow = '';
-          element.style.borderRadius = '';
-          element.style.transition = '';
-        };
-      }
-    }
-  }, [showInteractiveTour, tourHighlightedElement]);
-
-  // Close help options when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showHelpOptions) {
-        const target = event.target as Element;
-        if (!target.closest('.relative')) {
-          setShowHelpOptions(false);
-        }
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [showHelpOptions]);
-
   return (
     <>
       <LoadingOverlay isVisible={showLoadingOverlay} estimatedTime={estimatedProcessingTime} />
-      <Card className="shadow-lg">
-      <CardHeader>
-        <CardTitle className="text-2xl font-semibold">Upload Customer Data</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div
-          className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg transition-colors
-            ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/70'}
-            ${file ? 'bg-green-50 border-green-500' : ''}`}
+      
+      <div className="space-y-6">
+        <FileUploadDisplay
+          file={file}
+          isDragging={isDragging}
+          rowCount={rowCount}
+          onFileChange={handleFileChange}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-        >
-          <input
-            type="file"
-            id="fileUpload"
-            className="hidden"
-            onChange={handleFileChange}
-            accept=".csv,.xls,.xlsx"
-            ref={fileInputRef}
-          />
-          {file ? (
-            <div className="text-center">
-              <FileText className="w-16 h-16 mx-auto text-green-600 mb-3" />
-              <p className="font-medium text-green-700">{file.name}</p>
-              <div className="text-sm text-muted-foreground">
-                ({file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${(file.size / 1024).toFixed(2)} KB`})
-                {rowCount !== null && (
-                  <span className="ml-2 flex items-center justify-center">
-                    <ScanLine className="w-4 h-4 mr-1 text-muted-foreground" /> {rowCount} rows
-                  </span>
-                )}
-              </div>
-              <Button variant="link" size="sm" className="mt-2 text-destructive" onClick={() => handleFileSelection(null)}>
-                Remove file
-              </Button>
-            </div>
-          ) : (
-            <>
-              <UploadCloud className={`w-16 h-16 mx-auto mb-4 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
-              <label htmlFor="fileUpload" className="font-medium text-primary cursor-pointer hover:underline">
-                Choose a file
-              </label>
-              <p className="text-sm text-muted-foreground mt-1">or drag and drop</p>
-              <p className="text-xs text-muted-foreground mt-2">CSV, XLS, XLSX up to 100MB</p>
-            </>
-          )}
-        </div>
+          onFileRemove={() => handleFileSelection(null)}
+        />
 
         {columnHeaders.length > 0 && (
-          <>
-            {/* Help System */}
-            <div className="flex items-center justify-center mb-4">
-              <div className="relative">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowHelpOptions(!showHelpOptions)}
-                  className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:from-blue-100 hover:to-indigo-100 text-blue-700 font-medium shadow-sm transition-all duration-200 hover:shadow-md"
-                >
-                  <HelpCircle className="w-4 h-4 mr-2" />
-                  Need Help?
-                </Button>
-                
-                {showHelpOptions && (
-                  <div className="absolute top-full mt-2 left-1/2 transform -translate-x-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-2 z-50 min-w-[200px]">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={startInteractiveTour}
-                      className="w-full justify-start text-left hover:bg-blue-50"
-                    >
-                      <Play className="w-4 h-4 mr-2 text-blue-600" />
-                      Interactive Tour
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={openReferenceGuide}
-                      className="w-full justify-start text-left hover:bg-green-50"
-                    >
-                      <BookOpen className="w-4 h-4 mr-2 text-green-600" />
-                      Reference Guide
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4 mb-6" ref={blockingSectionRef} id="blocking-section">
-              <h3 className="text-lg font-semibold">Blocking Strategy Configuration</h3>
-              <div className="flex flex-col space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  {BLOCKING_STRATEGIES.map((strategy) => (
-                    <div key={strategy.id} className="flex items-center space-x-2" id={`${strategy.id.replace('use_', '')}-strategy`}>
-                      <Checkbox
-                        id={`strategy-${strategy.id}`}
-                        checked={
-                          strategy.id === 'use_prefix' ? usePrefix :
-                          strategy.id === 'use_metaphone' ? useMetaphone :
-                          strategy.id === 'use_soundex' ? useSoundex :
-                          strategy.id === 'use_ngram' ? useNgram : false
-                        }
-                        onCheckedChange={(checked: boolean | "indeterminate") => {
-                          if (strategy.id === 'use_prefix') setUsePrefix(!!checked);
-                          else if (strategy.id === 'use_metaphone') setUseMetaphone(!!checked);
-                          else if (strategy.id === 'use_soundex') setUseSoundex(!!checked);
-                          else if (strategy.id === 'use_ngram') setUseNgram(!!checked);
-                        }}
-                      />
-                      <label
-                        htmlFor={`strategy-${strategy.id}`}
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                      >
-                        {strategy.name}
-                      </label>
-                    </div>
-                  ))}
-                  
-                  <div className="flex items-center space-x-2" id="ai-strategy">
-                    <Checkbox
-                      id="use-ai"
-                      checked={useAi}
-                      onCheckedChange={(checked: boolean | "indeterminate") => setUseAi(!!checked)}
-                    />
-                    <label
-                      htmlFor="use-ai"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                      Clean with AI
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="bg-muted p-4 rounded-md">
-                  <h4 className="text-sm font-medium mb-2">Selected Strategies:</h4>
-                  <ul className="list-disc pl-5 space-y-1">
-                    {BLOCKING_STRATEGIES.map(strategy => {
-                      const isSelected =
-                        strategy.id === 'use_prefix' ? usePrefix :
-                        strategy.id === 'use_metaphone' ? useMetaphone :
-                        strategy.id === 'use_soundex' ? useSoundex :
-                        strategy.id === 'use_ngram' ? useNgram : false;
-                      
-                      return isSelected ? (
-                        <li key={strategy.id} className="text-sm">
-                          <span className="font-medium">{strategy.name}:</span> {strategy.description}
-                        </li>
-                      ) : null;
-                    })}
-                    {useAi && (
-                      <li className="text-sm">
-                        <span className="font-medium">Clean with AI:</span> Uses AI to analyze and determine duplicate confidence
-                      </li>
-                    )}
-                  </ul>
-                  
-                  {rowCount && (
-                    <div className="mt-4 border-t border-border pt-3">
-                      <h4 className="text-sm font-medium mb-2">Estimated Processing Time:</h4>
-                      <div className="flex items-center">
-                        <div className="text-sm">
-                          {(() => {
-                            const estimate = calculateEstimatedTime();
-                            if (!estimate) return "Calculating...";
-                            
-                            return (
-                              <span className="font-medium">
-                                ~{estimate.minutes > 0 ? `${estimate.minutes} minute${estimate.minutes !== 1 ? 's' : ''}` : ''}
-                                {estimate.seconds > 0 ? `${estimate.minutes > 0 ? ' ' : ''}${estimate.seconds} second${estimate.seconds !== 1 ? 's' : ''}` : ''}
-                              </span>
-                            );
-                          })()}
-                        </div>
-                      </div>
-                      
-                      {useAi && (
-                        <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-md">
-                          <strong>Note:</strong> AI processing significantly increases processing time. For faster results,
-                          consider using non-AI strategies and using the review card's AI recommendation feature for
-                          individual rows when needed.
-                        </div>
-                      )}
-                      
-                      {useNgram && !useAi && (
-                        <div className="mt-2 text-xs text-blue-600 bg-blue-50 p-2 rounded-md">
-                          <strong>Note:</strong> N-Gram processing is more thorough but takes longer than other non-AI methods.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="space-y-4" ref={thresholdsSectionRef} id="thresholds-section">
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor="name-threshold">Name Matching Threshold: {nameThreshold}%</Label>
-                    </div>
-                    <Slider
-                      id="name-threshold"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[nameThreshold]}
-                      onValueChange={(value: number[]) => setNameThreshold(value[0])}
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>More Inclusive</span>
-                      <span>More Precise</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <Label htmlFor="overall-threshold">Overall Matching Threshold: {overallThreshold}%</Label>
-                    </div>
-                    <Slider
-                      id="overall-threshold"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={[overallThreshold]}
-                      onValueChange={(value: number[]) => setOverallThreshold(value[0])}
-                    />
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>More Inclusive</span>
-                      <span>More Precise</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {columnHeaders.length > 0 && (
-          <div className="space-y-4" ref={columnMappingRef} id="column-mapping">
-            <h3 className="text-lg font-semibold">Map Columns to Logical Fields</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {LOGICAL_FIELDS.map((field) => (
-                <div key={field.key} className="space-y-2" id={`${field.key}-mapping`}>
-                  <Label htmlFor={field.key}>
-                    {field.label} {field.required && <span className="text-destructive">*</span>}
-                  </Label>
-                  <Select
-                    onValueChange={(value) => setColumnMap({ ...columnMap, [field.key]: value === "unmapped" ? "" : value })}
-                    value={columnMap[field.key] || "unmapped"}
-                    disabled={isLoading}
-                  >
-                    <SelectTrigger id={field.key}>
-                      <SelectValue placeholder="Select a column" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unmapped">Unmapped</SelectItem>
-                      {columnHeaders.map((header) => (
-                        <SelectItem key={header} value={header}>
-                          {header}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-4">
+            <HelpSystem className="mb-4" />
+            
+            <BlockingStrategyConfig
+              config={blockingConfig}
+              onConfigChange={setBlockingConfig}
+              rowCount={rowCount}
+              calculateEstimatedTime={calculateEstimatedTime}
+            />
+            
+            <ColumnMapping
+              columnHeaders={columnHeaders}
+              columnMap={columnMap}
+              onColumnMapChange={setColumnMap}
+              isLoading={isLoading}
+            />
           </div>
         )}
 
@@ -1162,148 +1103,30 @@ export function FileUpload({ onFileProcessed }: FileUploadProps): JSX.Element {
         )}
 
         {deduplicationResults && (
-          <div className="mt-4 space-y-4">
-            <h4 className="text-lg font-semibold">Deduplication Results</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Card className="bg-green-50 border-green-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-muted-foreground">Auto Merge</p>
-                      <p className="text-2xl font-bold text-green-700">{deduplicationResults.results.kpi_metrics.auto_merge}</p>
-                    </div>
-                    <Merge className="h-8 w-8 text-green-500" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">High confidence matches (≥98%)</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-yellow-50 border-yellow-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-muted-foreground">Needs Review</p>
-                      <p className="text-2xl font-bold text-yellow-700">{deduplicationResults.results.kpi_metrics.needs_review}</p>
-                    </div>
-                    <Eye className="h-8 w-8 text-yellow-500" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">Medium confidence matches (90-97%)</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-blue-50 border-blue-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-muted-foreground">Needs AI Analysis</p>
-                      <p className="text-2xl font-bold text-blue-700">{deduplicationResults.results.kpi_metrics.needs_ai}</p>
-                    </div>
-                    <Brain className="h-8 w-8 text-blue-500" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">Low confidence matches (&lt;90%)</p>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-purple-50 border-purple-200">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-muted-foreground">Total Duplicates</p>
-                      <p className="text-2xl font-bold text-purple-700">{deduplicationResults.results.total_potential_duplicates}</p>
-                    </div>
-                    <Users className="h-8 w-8 text-purple-500" />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">Total potential matches found</p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+          <ResultsDisplay results={deduplicationResults} sessionStats={sessionStats} className="mt-4" />
         )}
-      </CardContent>
-    </Card>
-
-    {/* Interactive Tour Overlay */}
-    {showInteractiveTour && (
-      <div className="fixed inset-0 z-50 bg-black bg-opacity-50 backdrop-blur-sm">
-        {/* Tour Step Card */}
-        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-52 max-w-md w-full mx-4">
-          <Card className="shadow-2xl border-blue-200">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                    Step {currentTourStep + 1} of {TOUR_STEPS.length}
-                  </Badge>
-                  <h3 className="font-semibold text-gray-900">{TOUR_STEPS[currentTourStep].title}</h3>
-                </div>
-                <Button variant="ghost" size="sm" onClick={closeTour}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <p className="text-gray-700 mb-4">{TOUR_STEPS[currentTourStep].content}</p>
-              <div className="flex justify-between items-center">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={previousTourStep}
-                  disabled={currentTourStep === 0}
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
-                  Previous
-                </Button>
-                <div className="flex space-x-1">
-                  {TOUR_STEPS.map((_, index) => (
-                    <div
-                      key={index}
-                      className={`w-2 h-2 rounded-full ${
-                        index === currentTourStep ? 'bg-blue-500' : 'bg-gray-300'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={nextTourStep}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  {currentTourStep === TOUR_STEPS.length - 1 ? 'Finish' : 'Next'}
-                  {currentTourStep !== TOUR_STEPS.length - 1 && <ChevronRight className="w-4 h-4 ml-1" />}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       </div>
-    )}
-
-    {/* Reference Guide Side Panel */}
-    {showReferenceGuide && (
-      <div className="fixed inset-0 z-50 flex">
-        {/* Side Panel - No backdrop, just the panel */}
-        <div className="ml-auto w-1/2 min-w-[500px] max-w-[800px] bg-white shadow-2xl overflow-hidden flex flex-col border-l border-gray-200">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-200 p-4 flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <BookOpen className="w-5 h-5 text-green-600" />
-              <h2 className="text-lg font-semibold text-green-800">Master Data Cleansing Help Guide</h2>
-            </div>
-            <Button variant="ghost" size="sm" onClick={closeReferenceGuide}>
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-          
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 bg-white">
-            <div className="prose prose-sm max-w-none">
-              {renderMarkdown(HELP_GUIDE_CONTENT)}
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
+    
+      <FileConflictDialog
+        isOpen={showFileConflictDialog}
+        onClose={handleConflictDialogClose}
+        fileName={file?.name || ''}
+        existingSession={existingSession}
+        suggestedFilename={suggestedFilename}
+        onLoadExistingSession={handleLoadExistingSession}
+        onCreateNewSession={handleCreateNewSession}
+        isLoading={isLoading}
+      />
+      
+      <DeleteInvalidRecordsModal
+        isOpen={showValidationModal}
+        onClose={handleCloseValidationModal}
+        onConfirmDelete={handleDeleteInvalidRecords}
+        invalidPairs={validationPairs}
+        isDeleting={isDeletingInvalidRecords}
+        onMovePair={handleMovePair}
+        onRefreshGrid={handleRefreshGrid}
+      />
     </>
   );
 }
