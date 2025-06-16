@@ -36,28 +36,70 @@ export interface RuleImprovementContext {
 export function createRuleGenerationPrompt(context: RuleGenerationContext): string {
   const { conversation, existingRules, dataSchema, businessContext } = context;
   
-  return `You are an expert business analyst specializing in Master Data Management (MDM) and duplicate detection rules.
+  // Detect the business scenario type from the conversation
+  const isFreightForwarder = conversation.toLowerCase().includes('freight') || conversation.toLowerCase().includes('forwarder');
+  const isJointVenture = conversation.toLowerCase().includes('joint venture') || conversation.toLowerCase().includes('jv');
+  const isGeographic = conversation.toLowerCase().includes('location') || conversation.toLowerCase().includes('geographic');
+  const isSubsidiary = conversation.toLowerCase().includes('subsidiary') || conversation.toLowerCase().includes('division');
+  
+  const scenarioContext = isFreightForwarder 
+    ? 'Freight forwarder and logistics companies with similar names but different locations and services'
+    : isJointVenture 
+    ? 'Joint ventures and business partnerships that should remain separate entities'
+    : isGeographic
+    ? 'Companies with similar names but different geographic locations'
+    : isSubsidiary
+    ? 'Parent companies, subsidiaries, and divisions with hierarchical relationships'
+    : 'General business entity deduplication';
+  
+  return `You are an expert business analyst specializing in Master Data Management (MDM) and duplicate detection rules for enterprise customers.
 
-**MISSION**: Analyze the following conversation and generate specific, implementable business rules for duplicate detection.
+**MISSION**: Analyze the user's specific business scenario and generate CONCRETE, ACTIONABLE business rules that directly address their stated problem.
 
-**CONTEXT**:
-${businessContext || 'Enterprise MDM system for customer data deduplication'}
+**BUSINESS SCENARIO CONTEXT**:
+${scenarioContext}
 
-**DATA SCHEMA** (if provided):
-${dataSchema ? JSON.stringify(dataSchema, null, 2) : 'Standard customer record fields: name, address, city, country, phone, etc.'}
+**USER'S REQUEST**:
+${conversation}
+
+**DATA SCHEMA**:
+Customer records typically include: company_name, address, city, state, country, postal_code, phone, email, tax_id, business_type, etc.
 
 **EXISTING RULES** (for reference):
 ${existingRules ? existingRules.join('\n') : 'No existing rules - creating from scratch'}
 
-**CONVERSATION TO ANALYZE**:
-${conversation}
-
 **REQUIREMENTS**:
-1. Extract all business rules mentioned or implied in the conversation
-2. Make rules specific and actionable
-3. Include confidence scores and recommendations
-4. Consider edge cases and exceptions
-5. Follow the existing Smart Rules Engine pattern
+1. Create rules that DIRECTLY solve the user's stated problem
+2. Be SPECIFIC about field names, operators, and values
+3. Include realistic examples that match the scenario
+4. Consider why similar entities should remain separate
+5. Focus on practical implementation
+
+**SCENARIO-SPECIFIC GUIDANCE**:
+${isFreightForwarder ? `
+For FREIGHT FORWARDERS:
+- Focus on location-based differentiation (different cities/countries = different companies)
+- Consider business_type or service_type fields
+- Look for shipping codes, port locations, service areas
+- Example: "DHL Supply Chain Tokyo" vs "DHL Supply Chain Mumbai" should remain separate
+- Rule should check: similar name + different city/country = keep separate
+` : ''}
+${isJointVenture ? `
+For JOINT VENTURES:
+- Look for entity relationship indicators
+- Consider shared ownership vs separate operations
+- Check for "JV", "Joint Venture", "Partnership" in names
+- Example: "Shell Chemical JV" vs "Shell Oil Company" = different entities
+- Rule should preserve legitimate business relationships
+` : ''}
+${isGeographic ? `
+For GEOGRAPHIC SEPARATION:
+- Focus on address fields (city, state, country)
+- Consider regional operations vs global duplicates
+- Look for local vs international presence
+- Example: "McDonald's USA" vs "McDonald's Japan" = separate entities
+- Rule should check location differences
+` : ''}
 
 **OUTPUT FORMAT** (JSON):
 {
@@ -91,8 +133,12 @@ ${conversation}
       }
     }
   ],
-  "summary": "Brief summary of extracted rules",
-  "insights": ["Additional insights or recommendations from the conversation"]
+  "summary": "Practical explanation of how the rules solve the user's specific problem",
+  "insights": [
+    "Specific implementation tips for the scenario",
+    "Common edge cases to watch for", 
+    "Monitoring recommendations"
+  ]
 }
 
 **IMPORTANT**:
@@ -100,7 +146,40 @@ ${conversation}
 - Each rule should have clear pass/fail criteria
 - Include specific field names and values from the conversation
 - Consider the rule's impact on false positives/negatives
-- Ensure rules align with existing Smart Rules Engine patterns`;
+- Ensure rules align with existing Smart Rules Engine patterns
+
+**EXAMPLE FOR FREIGHT FORWARDERS**:
+If user asks about freight forwarders, create a rule like:
+{
+  "ruleType": "geographic",
+  "ruleName": "freight_forwarder_location_exemption",
+  "description": "Keep freight forwarders with similar names but different locations separate",
+  "conditions": [
+    {
+      "field": "company_name",
+      "operator": "contains", 
+      "value": "freight|forward|logistics|shipping",
+      "caseSensitive": false
+    },
+    {
+      "field": "city",
+      "operator": "not_equals",
+      "value": "other_record_city"
+    }
+  ],
+  "logic": "AND",
+  "confidenceImpact": {
+    "condition": "When company names are similar but cities differ",
+    "confidence": "high",
+    "score": 95,
+    "recommendation": "reject"
+  },
+  "reasoning": "Freight forwarders operate locally - same company name in different cities represents separate local operations",
+  "examples": {
+    "positive": ["DHL Frankfurt", "DHL Singapore - different cities, keep separate"],
+    "negative": ["ABC Freight Boston", "ABC Freight Boston - same city, potential duplicate"]
+  }
+}`;
 }
 
 /**
