@@ -67,7 +67,7 @@ if check_port 3000; then
     SERVER_PID=$!
     
     # Give the server time to start
-    if wait_for_server "http://localhost:3000"; then
+    if wait_for_server "http://https://datacleanse.sliplane.app"; then
         echo "✅ Next.js server started successfully (PID: $SERVER_PID)"
         SERVER_STARTED_BY_SCRIPT=true
     else
@@ -79,7 +79,7 @@ else
     echo "📍 Port 3000 is already in use. Assuming server is already running..."
     
     # Test if the server is our Next.js app
-    if wait_for_server "http://localhost:3000"; then
+    if wait_for_server "http://https://datacleanse.sliplane.app"; then
         echo "✅ Server on port 3000 is responding"
         SERVER_STARTED_BY_SCRIPT=false
     else

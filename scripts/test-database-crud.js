@@ -10,7 +10,7 @@ const https = require('https');
 const crypto = require('crypto');
 
 // Configuration
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'http://https://datacleanse.sliplane.app';
 const TEST_USER_ID = 'test_user_crud_' + crypto.randomBytes(4).toString('hex');
 
 // Test tracking

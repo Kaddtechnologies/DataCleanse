@@ -111,7 +111,7 @@ docker exec -it mdm-postgres psql -U mdm_user -d mdm_dedup
 docker logs mdm-postgres
 
 # Database health check
-curl http://localhost:3000/api/health
+curl http://https://datacleanse.sliplane.app/api/health
 ```
 
 ### Azure OpenAI Settings (in environment.ts)

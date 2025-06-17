@@ -320,14 +320,14 @@ test_api_health() {
     print_step "Testing API health endpoint (if application is running)..."
     
     if command -v curl &> /dev/null; then
-        if curl -s http://localhost:3000/api/health &> /dev/null; then
+        if curl -s http://https://datacleanse.sliplane.app/api/health &> /dev/null; then
             print_success "API health endpoint is responding"
-            curl -s http://localhost:3000/api/health | jq . 2>/dev/null || echo "API is healthy"
+            curl -s http://https://datacleanse.sliplane.app/api/health | jq . 2>/dev/null || echo "API is healthy"
         else
             print_info "API is not running yet. Start it with: npm run dev"
         fi
     else
-        print_info "curl not available. Start the application with 'npm run dev' and visit http://localhost:3000/api/health"
+        print_info "curl not available. Start the application with 'npm run dev' and visit http://https://datacleanse.sliplane.app/api/health"
     fi
 }
 
@@ -365,7 +365,7 @@ main() {
     
     echo ""
     print_success "You can now start the Next.js application with: npm run dev"
-    print_info "The application will be available at: http://localhost:3000"
+    print_info "The application will be available at: http://https://datacleanse.sliplane.app"
     print_info "Database admin tools can connect using the credentials above"
     echo ""
 }
