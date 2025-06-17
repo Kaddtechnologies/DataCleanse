@@ -15,7 +15,10 @@ import {
   AlertCircle,
   Clock,
   FileCheck,
-  Zap
+  Zap,
+  Plus,
+  WifiOff,
+  Wifi
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -25,6 +28,140 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { BusinessRulesTab } from './BusinessRulesTab';
+
+// ERP Connectors Data
+const erpConnectorsData = [
+  { 
+    id: 'sap', 
+    name: 'SAP S/4HANA', 
+    logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/59/SAP_2011_logo.svg/200px-SAP_2011_logo.svg.png', 
+    status: 'Connected' as const, 
+    description: 'Finance, Supply Chain, and Manufacturing modules synchronized.', 
+    lastSync: '2 minutes ago', 
+    syncedObjects: 148290 
+  },
+  { 
+    id: 'salesforce', 
+    name: 'Salesforce', 
+    logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Salesforce.com_logo.svg/200px-Salesforce.com_logo.svg.png', 
+    status: 'Connected' as const, 
+    description: 'Accounts, Contacts, and Opportunities data synchronized.', 
+    lastSync: '15 minutes ago', 
+    syncedObjects: 32104 
+  },
+  { 
+    id: 'oracle', 
+    name: 'Oracle NetSuite', 
+    logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/50/Oracle_logo.svg/200px-Oracle_logo.svg.png', 
+    status: 'Warning' as const, 
+    description: 'Connection issue detected. Last successful sync 2 hours ago.', 
+    lastSync: '2 hours ago', 
+    syncedObjects: 89345 
+  },
+  { 
+    id: 'dynamics', 
+    name: 'Microsoft Dynamics 365', 
+    logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/Microsoft_Dynamics_365_logo.svg/200px-Microsoft_Dynamics_365_logo.svg.png', 
+    status: 'Not Connected' as const, 
+    description: 'Connect to sync your business process data.', 
+    lastSync: 'N/A', 
+    syncedObjects: 0 
+  },
+];
+
+// Status Badge Component
+interface StatusBadgeProps {
+  status: 'Connected' | 'Warning' | 'Not Connected';
+}
+
+const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+  const statusConfig = {
+    'Connected': {
+      className: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+      icon: <Wifi className="w-3 h-3" />
+    },
+    'Warning': {
+      className: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+      icon: <AlertCircle className="w-3 h-3" />
+    },
+    'Not Connected': {
+      className: 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400',
+      icon: <WifiOff className="w-3 h-3" />
+    }
+  };
+
+  const config = statusConfig[status];
+
+  return (
+    <Badge className={`inline-flex items-center gap-1 ${config.className}`}>
+      {config.icon}
+      {status}
+    </Badge>
+  );
+};
+
+// ERP Connector Card Component
+interface ErpConnectorCardProps {
+  name: string;
+  logo: string;
+  status: 'Connected' | 'Warning' | 'Not Connected';
+  description: string;
+  lastSync: string;
+  syncedObjects: number;
+}
+
+const ErpConnectorCard: React.FC<ErpConnectorCardProps> = ({ 
+  name, 
+  logo, 
+  status, 
+  description, 
+  lastSync, 
+  syncedObjects 
+}) => (
+  <Card className="group hover:shadow-xl hover:scale-[1.02] transition-all duration-300 backdrop-blur-sm bg-gradient-to-br from-white/80 to-white/40 dark:from-slate-900/80 dark:to-slate-900/40 border-white/20 dark:border-white/10 flex flex-col">
+    <CardHeader className="pb-4">
+      <div className="flex justify-between items-start">
+        <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-lg flex items-center justify-center p-2 border border-gray-200 dark:border-gray-600 shadow-sm">
+          <img 
+            src={logo} 
+            alt={`${name} logo`} 
+            className="max-w-full max-h-full object-contain" 
+            onError={(e) => { 
+              const target = e.target as HTMLImageElement;
+              target.onerror = null; 
+              target.src = `https://placehold.co/100x100/f0f0f0/333?text=${name.charAt(0)}`; 
+            }}
+          />
+        </div>
+        <StatusBadge status={status} />
+      </div>
+      <div className="mt-4">
+        <CardTitle className="text-lg">{name}</CardTitle>
+        <CardDescription className="text-sm mt-1 h-10 line-clamp-2">
+          {description}
+        </CardDescription>
+      </div>
+    </CardHeader>
+    <CardContent className="flex-1 flex flex-col justify-end">
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Last Sync:</span>
+          <span className="font-medium">{lastSync}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Synced Objects:</span>
+          <span className="font-medium">{syncedObjects.toLocaleString()}</span>
+        </div>
+        <Button 
+          variant="outline" 
+          className="w-full mt-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border-purple-200 dark:border-purple-800 hover:from-purple-100 hover:to-blue-100 dark:hover:from-purple-900/30 dark:hover:to-blue-900/30"
+        >
+          Manage Connection
+        </Button>
+      </div>
+    </CardContent>
+  </Card>
+);
 
 // Metric Card Component with executive-grade styling
 interface MetricCardProps {
@@ -432,89 +569,102 @@ export function MDMDashboard() {
 
           {/* ERP Integration Tab */}
           <TabsContent value="erp-integration" className="space-y-6">
+            {/* Header Section */}
+            <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+              <div>
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                  ERP Integration Hub
+                </h2>
+                <p className="text-muted-foreground mt-1">
+                  Connect and synchronize data with your enterprise systems.
+                </p>
+              </div>
+              <Button 
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg"
+                onClick={() => handleComingSoon('Add Connection')}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Connection
+              </Button>
+            </div>
+
+            {/* ERP Connectors Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {erpConnectorsData.map(connector => (
+                <ErpConnectorCard key={connector.id} {...connector} />
+              ))}
+            </div>
+
+            {/* Key Benefits Section */}
             <Card className="backdrop-blur-sm bg-gradient-to-br from-white/80 to-white/40 dark:from-slate-900/80 dark:to-slate-900/40 border-white/20 dark:border-white/10">
               <CardHeader>
-                <CardTitle>ERP Integration Hub</CardTitle>
+                <CardTitle>Integration Benefits</CardTitle>
                 <CardDescription>
                   Transform dirty data into enterprise-ready master data automatically
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
-                  {/* Hero Section */}
-                  <div className="text-center py-8 space-y-4">
-                    <div className="p-4 rounded-full bg-gradient-to-br from-blue-100 to-purple-200 dark:from-blue-900/30 dark:to-purple-800/30 w-20 h-20 mx-auto flex items-center justify-center">
-                      <Link2 className="w-10 h-10 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                      Seamless ERP Integration
-                    </h3>
-                    <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                      <strong>Dirty → Clean → Upload</strong> happens automatically. No more manual data exports, cleansing, and uploads.
-                    </p>
-                    <Badge variant="outline" className="text-base px-4 py-2">Q3 2025</Badge>
-                  </div>
-
-                  {/* Key Benefits Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
-                      <CardContent className="p-6 text-center">
-                        <div className="p-3 rounded-full bg-blue-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
-                          <Zap className="w-6 h-6" />
-                        </div>
-                        <h4 className="font-semibold mb-2">Real-Time Cleansing</h4>
-                        <p className="text-sm text-muted-foreground">
-                          AI-powered rules clean data as it flows between systems
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
-                      <CardContent className="p-6 text-center">
-                        <div className="p-3 rounded-full bg-green-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
-                          <TrendingUp className="w-6 h-6" />
-                        </div>
-                        <h4 className="font-semibold mb-2">Zero Manual Work</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Eliminate 80% of data prep time with automated pipelines
-                        </p>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
-                      <CardContent className="p-6 text-center">
-                        <div className="p-3 rounded-full bg-purple-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
-                          <Shield className="w-6 h-6" />
-                        </div>
-                        <h4 className="font-semibold mb-2">Enterprise Scale</h4>
-                        <p className="text-sm text-muted-foreground">
-                          SAP, Oracle, Dynamics - all systems stay synchronized
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* Value Proposition */}
-                  <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800">
-                    <CardContent className="p-6">
-                      <div className="flex items-start gap-4">
-                        <div className="p-2 rounded-full bg-amber-500 text-white">
-                          <Activity className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-2">
-                            The Future of Master Data Management
-                          </h4>
-                          <p className="text-amber-800 dark:text-amber-200 leading-relaxed">
-                            Imagine your CRM, ERP, and warehouse systems always having perfect, clean data. 
-                            No more weekend data loads, no more "dirty data" firefights, no more manual reconciliation. 
-                            Just continuous, intelligent data harmony across your entire enterprise.
-                          </p>
-                        </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                    <CardContent className="p-6 text-center">
+                      <div className="p-3 rounded-full bg-blue-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
+                        <Zap className="w-6 h-6" />
                       </div>
+                      <h4 className="font-semibold mb-2">Real-Time Cleansing</h4>
+                      <p className="text-sm text-muted-foreground">
+                        AI-powered rules clean data as it flows between systems
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+                    <CardContent className="p-6 text-center">
+                      <div className="p-3 rounded-full bg-green-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
+                        <TrendingUp className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-semibold mb-2">Zero Manual Work</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Eliminate 80% of data prep time with automated pipelines
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
+                    <CardContent className="p-6 text-center">
+                      <div className="p-3 rounded-full bg-purple-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
+                        <Shield className="w-6 h-6" />
+                      </div>
+                      <h4 className="font-semibold mb-2">Enterprise Scale</h4>
+                      <p className="text-sm text-muted-foreground">
+                        SAP, Oracle, Dynamics - all systems stay synchronized
+                      </p>
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* Value Proposition */}
+                <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800 mt-6">
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 rounded-full bg-amber-500 text-white">
+                        <Activity className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-2">
+                          The Future of Master Data Management
+                        </h4>
+                        <p className="text-amber-800 dark:text-amber-200 leading-relaxed">
+                          Imagine your CRM, ERP, and warehouse systems always having perfect, clean data. 
+                          No more weekend data loads, no more "dirty data" firefights, no more manual reconciliation. 
+                          Just continuous, intelligent data harmony across your entire enterprise.
+                        </p>
+                        <Badge variant="outline" className="mt-3 border-amber-300 dark:border-amber-700">
+                          Coming Q3 2025
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
               </CardContent>
             </Card>
           </TabsContent>
