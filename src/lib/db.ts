@@ -1,14 +1,16 @@
 import { Pool, PoolClient } from 'pg';
 import type { CustomerRecord, DuplicatePair } from '@/types';
 
-// Database connection configuration
+// Database connection configuration with environment variable support
 const pool = new Pool({
-  host: 'localhost',
-  port: 5433,
-  database: 'mdm_dedup',
-  user: 'mdm_user',
-  password: 'mdm_password123', // Empty string password for trust authentication
-  ssl: false,
+  connectionString: process.env.DATABASE_URL,
+  // Fallback to individual config for local development
+  host: process.env.DATABASE_URL ? undefined : 'localhost',
+  port: process.env.DATABASE_URL ? undefined : 5433,
+  database: process.env.DATABASE_URL ? undefined : 'mdm_dedup',
+  user: process.env.DATABASE_URL ? undefined : 'mdm_user',
+  password: process.env.DATABASE_URL ? undefined : 'mdm_password123',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000, // Increased from 2s to 10s

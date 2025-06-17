@@ -6,10 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sparkles, Send, Building2, Truck, MapPin, FileText, Loader2, User } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Sparkles, Send, Building2, Truck, MapPin, FileText, Loader2, User, ChevronLeft, ChevronRight, Code, TestTube, Rocket, X } from 'lucide-react';
 import { ConversationMessage, BusinessRule } from '@/types/business-rules';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { RuleCodeEditor } from './RuleCodeEditor';
+import { TestingFramework } from './TestingFramework';
+import { DeploymentManager } from './DeploymentManager';
 
 interface ConversationalInterfaceProps {
   onRuleGenerated?: (rule: BusinessRule) => void;
@@ -19,31 +23,31 @@ interface ConversationalInterfaceProps {
 const quickStartTemplates = [
   {
     id: 'joint-venture',
-    icon: Building2,
     title: 'Joint Venture Detection',
-    description: 'Identify legitimate joint ventures vs duplicates',
-    prompt: 'I need to detect when two companies are part of a joint venture and should be kept separate, like "Shell Chemical" and "Shell Oil".'
+    description: 'Identify legitimate business partnerships',
+    icon: Building2,
+    prompt: 'Create a rule to detect joint ventures between companies that share the same address but are legitimate separate entities, like BP-Rosneft joint ventures in the energy sector.'
   },
   {
     id: 'freight-forwarder',
+    title: 'Freight Forwarder Exception',
+    description: 'Handle logistics companies correctly',
     icon: Truck,
-    title: 'Freight Forwarder Rules',
-    description: 'Handle freight forwarders and logistics companies',
-    prompt: 'Help me create rules for freight forwarders that might have similar names but different locations.'
+    prompt: 'Create a rule to identify freight forwarders and shipping companies that appear at customer addresses but should not be merged with the actual customers.'
   },
   {
-    id: 'subsidiary',
-    icon: Building2,
-    title: 'Division/Subsidiary Logic',
-    description: 'Manage parent companies and their divisions',
-    prompt: 'I need rules to handle divisions and subsidiaries of the same parent company.'
-  },
-  {
-    id: 'geographic',
+    id: 'geographic-division',
+    title: 'Geographic Division Rules',
+    description: 'Handle regional business divisions',
     icon: MapPin,
-    title: 'Geographic Exemptions',
-    description: 'Location-based duplicate detection',
-    prompt: 'Create rules for companies with same name but different geographic locations that should remain separate.'
+    prompt: 'Create a rule to handle companies that have separate regional divisions operating at the same location, like Shell Chemical vs Shell Oil.'
+  },
+  {
+    id: 'data-quality',
+    title: 'Data Quality Check',
+    description: 'Validate record completeness',
+    icon: FileText,
+    prompt: 'Create a rule to flag records with missing critical information that might affect duplicate detection accuracy.'
   }
 ];
 
@@ -63,11 +67,9 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [currentContext, setCurrentContext] = useState<any>({
-    records: 0,
-    similarity: 0,
-    existingRules: existingRules.length
-  });
+  const [sandboxOpen, setSandboxOpen] = useState(false);
+  const [currentRule, setCurrentRule] = useState<BusinessRule | null>(null);
+  const [testResults, setTestResults] = useState<any>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -147,7 +149,7 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
         sessionId: 'current',
         role: 'assistant',
         type: 'text',
-        content: result.summary || result.explanation || 'I\'ve analyzed your scenario and generated business rules. You can review them in the rule editor.',
+        content: result.summary || result.explanation || 'I\'ve analyzed your scenario and generated business rules. You can review them in the sandbox on the right.',
         timestamp: new Date(),
         metadata: {
           timestamp: new Date().toISOString()
@@ -156,13 +158,8 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
 
       setMessages(prev => [...prev, aiMessage]);
 
-      // Update context
-      if (result.context) {
-        setCurrentContext(result.context);
-      }
-
       // Pass generated rules to parent - handle both single rule and multiple rules
-      if (result.rules && result.rules.length > 0 && onRuleGenerated) {
+      if (result.rules && result.rules.length > 0) {
         console.log('🔄 Converting generated rule to BusinessRule format...');
         // Convert the first generated rule to BusinessRule format
         const generatedRule = result.rules[0];
@@ -193,11 +190,19 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
           tags: generatedRule.flags || []
         };
         console.log('✅ BusinessRule created:', businessRule);
-        onRuleGenerated(businessRule);
-      } else if (result.rule && onRuleGenerated) {
+        setCurrentRule(businessRule);
+        setSandboxOpen(true);
+        if (onRuleGenerated) {
+          onRuleGenerated(businessRule);
+        }
+      } else if (result.rule) {
         // Handle single rule format
         console.log('🔄 Using single rule format');
-        onRuleGenerated(result.rule);
+        setCurrentRule(result.rule);
+        setSandboxOpen(true);
+        if (onRuleGenerated) {
+          onRuleGenerated(result.rule);
+        }
       }
 
       // If AI has insights, add them as additional messages
@@ -268,17 +273,51 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
     }
   };
 
+  const handleTestComplete = (results: any) => {
+    setTestResults(results);
+  };
+
+  const handleSaveRule = async (rule: BusinessRule) => {
+    setCurrentRule(rule);
+    toast({
+      title: "Rule saved",
+      description: "Your business rule has been saved successfully.",
+    });
+  };
+
+  const handleDeploy = async (rule: BusinessRule) => {
+    toast({
+      title: "Deployment started",
+      description: "Your rule is being deployed to production.",
+    });
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-      {/* Conversation Panel */}
-      <div className="lg:col-span-2">
-        <Card className="h-full flex flex-col bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 border-slate-200 dark:border-slate-700">
-          <CardHeader className="border-b bg-gradient-to-r from-purple-600/10 to-blue-600/10 dark:from-purple-600/20 dark:to-blue-600/20">
+    <div className="h-full flex">
+      {/* Chat Panel */}
+      <div className={cn(
+        "flex flex-col transition-all duration-300",
+        sandboxOpen ? "w-1/2 border-r" : "w-full"
+      )}>
+        <Card className="h-full flex flex-col bg-gradient-to-br from-white to-slate-50 dark:from-slate-900 dark:to-slate-800 border-slate-200 dark:border-slate-700 rounded-none border-0">
+          <CardHeader className="border-b bg-gradient-to-r from-purple-600/10 to-blue-600/10 dark:from-purple-600/20 dark:to-blue-600/20 flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-purple-600" />
               AI Conversation
             </CardTitle>
+            {sandboxOpen && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSandboxOpen(false)}
+                className="ml-auto"
+              >
+                <ChevronRight className="w-4 h-4" />
+                Collapse Sandbox
+              </Button>
+            )}
           </CardHeader>
+          
           <CardContent className="flex-1 flex flex-col p-0">
             {/* Messages */}
             <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
@@ -340,7 +379,7 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
                   Quick Start Templates:
                 </p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {quickStartTemplates.map((template) => (
                     <button
                       key={template.id}
@@ -373,92 +412,115 @@ export function ConversationalInterface({ onRuleGenerated, existingRules = [] }:
                   className="flex-1 min-h-[60px] max-h-[120px] resize-none"
                   disabled={isGenerating}
                 />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!inputValue.trim() || isGenerating}
-                  className="self-end"
-                >
-                  {isGenerating ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Send className="w-4 h-4" />
+                <div className="flex flex-col gap-2">
+                  <Button
+                    onClick={handleSendMessage}
+                    disabled={!inputValue.trim() || isGenerating}
+                    className="self-end"
+                  >
+                    {isGenerating ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                  </Button>
+                  {!sandboxOpen && currentRule && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSandboxOpen(true)}
+                      className="text-xs"
+                    >
+                      <ChevronLeft className="w-3 h-3 mr-1" />
+                      Open Sandbox
+                    </Button>
                   )}
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Context Panel */}
-      <div className="lg:col-span-1">
-        <Card className="h-full bg-gradient-to-br from-slate-50 to-white dark:from-slate-800 dark:to-slate-900">
-          <CardHeader className="border-b bg-gradient-to-r from-blue-600/10 to-purple-600/10 dark:from-blue-600/20 dark:to-purple-600/20">
-            <CardTitle className="text-base">Current Context</CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-4">
-            {/* Context Info */}
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  Records Analyzed
-                </p>
-                <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                  {currentContext.records}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  Average Similarity
-                </p>
-                <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                  {currentContext.similarity}%
-                </p>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                  Active Rules
-                </p>
-                <p className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-                  {currentContext.existingRules}
-                </p>
-              </div>
-            </div>
-
-            {/* Similar Cases */}
-            <div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                Similar Cases Found:
-              </p>
-              <div className="space-y-2">
-                <div className="p-2 rounded bg-slate-100 dark:bg-slate-800 text-sm">
-                  BP Chemical vs BP Oil
-                </div>
-                <div className="p-2 rounded bg-slate-100 dark:bg-slate-800 text-sm">
-                  Exxon Chemical vs Mobil
-                </div>
-              </div>
-            </div>
-
-            {/* Existing Rules */}
-            <div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                Related Rules:
-              </p>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-2 rounded bg-slate-100 dark:bg-slate-800">
-                  <span className="text-sm">Joint Venture</span>
-                  <Badge variant="default" className="text-xs">94.2%</Badge>
-                </div>
-                <div className="flex items-center justify-between p-2 rounded bg-slate-100 dark:bg-slate-800">
-                  <span className="text-sm">Freight Forward</span>
-                  <Badge variant="default" className="text-xs">98.1%</Badge>
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Sandbox Panel */}
+      {sandboxOpen && (
+        <div className="w-1/2 flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900">
+            <h2 className="font-semibold flex items-center gap-2">
+              <Code className="w-5 h-5 text-blue-600" />
+              Rule Sandbox
+            </h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSandboxOpen(false)}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          
+          <div className="flex-1 overflow-hidden">
+            {currentRule ? (
+              <Tabs defaultValue="code" className="h-full flex flex-col">
+                <TabsList className="w-full justify-start rounded-none border-b h-auto p-0">
+                  <TabsTrigger value="code" className="rounded-none border-b-2 border-transparent data-[state=active]:border-blue-600">
+                    <Code className="w-4 h-4 mr-2" />
+                    Code Editor
+                  </TabsTrigger>
+                  <TabsTrigger value="test" className="rounded-none border-b-2 border-transparent data-[state=active]:border-green-600">
+                    <TestTube className="w-4 h-4 mr-2" />
+                    Testing
+                  </TabsTrigger>
+                  <TabsTrigger value="deploy" className="rounded-none border-b-2 border-transparent data-[state=active]:border-purple-600">
+                    <Rocket className="w-4 h-4 mr-2" />
+                    Deploy
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="code" className="flex-1 mt-0 border-0 p-0">
+                  <div className="h-full">
+                    <RuleCodeEditor
+                      rule={currentRule}
+                      onTest={() => {}}
+                      onSave={handleSaveRule}
+                    />
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="test" className="flex-1 mt-0 border-0 p-0">
+                  <div className="h-full">
+                    <TestingFramework
+                      rule={currentRule}
+                      onTestComplete={handleTestComplete}
+                      onDeploy={() => {}}
+                    />
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="deploy" className="flex-1 mt-0 border-0 p-0">
+                  <div className="h-full">
+                    <DeploymentManager
+                      rule={currentRule}
+                      testResults={testResults}
+                      onDeploy={handleDeploy}
+                    />
+                  </div>
+                </TabsContent>
+              </Tabs>
+            ) : (
+              <div className="h-full flex items-center justify-center p-8">
+                <div className="text-center">
+                  <Code className="w-16 h-16 text-muted-foreground mx-auto mb-4 opacity-20" />
+                  <h3 className="text-lg font-medium mb-2">No Rule Generated</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Start a conversation to generate a business rule and it will appear here for editing and testing.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

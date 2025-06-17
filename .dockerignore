@@ -1,0 +1,68 @@
+# Dependencies
+node_modules
+npm-debug.log*
+.npm
+.pnpm-debug.log*
+
+# Local env files
+.env*.local
+.env
+.env.production
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Next.js
+.next/
+out/
+
+# Production
+build
+
+# Debug
+.DS_Store
+*.pem
+
+# Local development
+.vscode
+.idea
+
+# Testing
+coverage
+.nyc_output
+
+# Git
+.git
+.gitignore
+README.md
+
+# CI/CD
+.github
+
+# Logs
+logs
+*.log
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Scripts (not needed in container)
+scripts/
+*.ps1
+*.sh
+
+# Documentation
+*.md
+docs/
+
+# Test files
+tests/
+__tests__/
+*.test.*
+*.spec.* 

@@ -2,6 +2,9 @@ import type { NextConfig } from 'next';
 import path from 'path';
 
 const nextConfig: NextConfig = {
+  // Enable standalone output for Docker builds
+  output: 'standalone',
+  
   images: {
     remotePatterns: [{ protocol: 'https', hostname: 'placehold.co', pathname: '/**' }],
   },

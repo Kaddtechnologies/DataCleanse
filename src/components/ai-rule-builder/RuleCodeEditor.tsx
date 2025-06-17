@@ -172,7 +172,7 @@ This rule identifies legitimate business divisions that should remain separate e
             Generated Rule
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Badge variant="outline">TypeScript</Badge>
+            <Badge variant="outline" className="text-accent-foreground">TypeScript</Badge>
             <Badge variant="default" className="bg-green-500 hover:bg-green-600">
               Ready
             </Badge>
