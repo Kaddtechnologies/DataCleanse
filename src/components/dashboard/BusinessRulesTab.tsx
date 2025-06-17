@@ -71,6 +71,7 @@ export function BusinessRulesTab() {
   const [submissionRule, setSubmissionRule] = useState<BusinessRule | null>(null);
   const [submissionComments, setSubmissionComments] = useState('');
   const [submissionPriority, setSubmissionPriority] = useState<'low' | 'medium' | 'high' | 'critical'>('medium');
+  const [submissionLoading, setSubmissionLoading] = useState(false);
 
   const { toast } = useToast();
 
@@ -254,6 +255,7 @@ export function BusinessRulesTab() {
   const handleConfirmSubmission = async () => {
     if (!submissionRule) return;
 
+    setSubmissionLoading(true);
     try {
       const response = await fetch(`/api/rules/${submissionRule.id}/submit-approval`, {
         method: 'POST',
@@ -287,6 +289,8 @@ export function BusinessRulesTab() {
         description: "Failed to submit rule for approval. Please try again.",
         variant: "destructive"
       });
+    } finally {
+      setSubmissionLoading(false);
     }
   };
 
@@ -914,103 +918,107 @@ export function BusinessRulesTab() {
 
       {/* Edit Rule Dialog */}
       <Dialog open={!!selectedRuleForEdit} onOpenChange={() => setSelectedRuleForEdit(null)}>
-        <DialogContent className="w-[95vw] max-w-7xl h-[70vh] max-h-[90vh] p-0 gap-0">
+        <DialogContent className="w-[95vw] max-w-sm sm:max-w-md md:max-w-4xl lg:max-w-7xl h-[95vh] sm:h-[90vh] md:h-[85vh] p-0 gap-0 overflow-hidden">
           <div className="flex flex-col h-full">
-            <DialogHeader className="px-6 py-4 border-b shrink-0">
-              <DialogTitle className="flex items-center gap-2">
-                <Edit className="w-5 h-5" />
+            <DialogHeader className="p-4 sm:p-6 border-b shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Edit className="w-4 h-4 sm:w-5 sm:h-5" />
                 Edit Rule: {selectedRuleForEdit?.name}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-sm">
                 Modify rule configuration and test changes before deployment.
               </DialogDescription>
             </DialogHeader>
             
             {selectedRuleForEdit && (
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden min-h-0">
                 <Tabs defaultValue="config" className="h-full flex flex-col">
-                  <TabsList className="grid w-full grid-cols-3 mx-6 mt-4 shrink-0">
-                    <TabsTrigger value="config">Configuration</TabsTrigger>
-                    <TabsTrigger value="code">Code Editor</TabsTrigger>
-                    <TabsTrigger value="test">Testing</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3 mx-4 sm:mx-6 mt-4 shrink-0">
+                    <TabsTrigger value="config" className="text-xs sm:text-sm">Config</TabsTrigger>
+                    <TabsTrigger value="code" className="text-xs sm:text-sm">Code</TabsTrigger>
+                    <TabsTrigger value="test" className="text-xs sm:text-sm">Test</TabsTrigger>
                   </TabsList>
                   
-                  <div className="flex-1 overflow-hidden px-6 pb-6">
-                    <TabsContent value="config" className="h-full mt-4 space-y-6 overflow-y-auto">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                          <Label htmlFor="ruleName" className="text-base font-medium">Rule Name</Label>
-                          <Input 
-                            id="ruleName" 
-                            value={selectedRuleForEdit.name} 
-                            readOnly 
-                            className="mt-2 h-12 text-base"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="ruleCategory" className="text-base font-medium">Category</Label>
-                          <Input 
-                            id="ruleCategory" 
-                            value={selectedRuleForEdit.rule_type || selectedRuleForEdit.category} 
-                            readOnly 
-                            className="mt-2 h-12 text-base"
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="ruleDescription" className="text-base font-medium">Description</Label>
-                        <Textarea 
-                          id="ruleDescription" 
-                          value={selectedRuleForEdit.description} 
-                          readOnly 
-                          rows={6} 
-                          className="mt-2 text-base"
-                        />
-                      </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div>
-                          <Label className="text-base font-medium">Accuracy</Label>
-                          <div className="mt-2 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {selectedRuleForEdit.accuracy ? `${selectedRuleForEdit.accuracy}%` : 'N/A'}
+                  <div className="flex-1 overflow-hidden px-4 sm:px-6 pb-4 sm:pb-6 min-h-0">
+                    <TabsContent value="config" className="h-full mt-4 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden">
+                      <ScrollArea className="flex-1 w-full pr-2 sm:pr-4">
+                        <div className="space-y-4 sm:space-y-6 pb-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                            <div>
+                              <Label htmlFor="ruleName" className="text-sm sm:text-base font-medium">Rule Name</Label>
+                              <Input 
+                                id="ruleName" 
+                                value={selectedRuleForEdit.name} 
+                                readOnly 
+                                className="mt-2 h-10 sm:h-12 text-sm sm:text-base"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor="ruleCategory" className="text-sm sm:text-base font-medium">Category</Label>
+                              <Input 
+                                id="ruleCategory" 
+                                value={selectedRuleForEdit.rule_type || selectedRuleForEdit.category} 
+                                readOnly 
+                                className="mt-2 h-10 sm:h-12 text-sm sm:text-base"
+                              />
                             </div>
                           </div>
-                        </div>
-                        <div>
-                          <Label className="text-base font-medium">Executions</Label>
-                          <div className="mt-2 p-4 bg-green-50 dark:bg-green-950 rounded-lg">
-                            <div className="text-2xl font-bold text-green-600">
-                              {selectedRuleForEdit.execution_count || 0}
+                          
+                          <div>
+                            <Label htmlFor="ruleDescription" className="text-sm sm:text-base font-medium">Description</Label>
+                            <Textarea 
+                              id="ruleDescription" 
+                              value={selectedRuleForEdit.description} 
+                              readOnly 
+                              rows={4}
+                              className="mt-2 text-sm sm:text-base"
+                            />
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
+                            <div>
+                              <Label className="text-sm sm:text-base font-medium">Accuracy</Label>
+                              <div className="mt-2 p-3 sm:p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                                <div className="text-lg sm:text-2xl font-bold text-blue-600">
+                                  {selectedRuleForEdit.accuracy ? `${selectedRuleForEdit.accuracy}%` : 'N/A'}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-sm sm:text-base font-medium">Executions</Label>
+                              <div className="mt-2 p-3 sm:p-4 bg-green-50 dark:bg-green-950 rounded-lg">
+                                <div className="text-lg sm:text-2xl font-bold text-green-600">
+                                  {selectedRuleForEdit.execution_count || 0}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              <Label className="text-sm sm:text-base font-medium">Avg Time</Label>
+                              <div className="mt-2 p-3 sm:p-4 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
+                                <div className="text-lg sm:text-2xl font-bold text-yellow-600">
+                                  {selectedRuleForEdit.avg_execution_time ? `${selectedRuleForEdit.avg_execution_time}ms` : 'N/A'}
+                                </div>
+                              </div>
                             </div>
                           </div>
+                          
+                          <Card>
+                            <CardHeader>
+                              <CardTitle className="text-base sm:text-lg">Configuration Preview</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="text-xs sm:text-sm text-muted-foreground bg-muted p-3 sm:p-4 rounded-md">
+                                Full editing capabilities will be available in the next version. For now, you can view rule details and test configurations.
+                                The sandbox environment provides a comprehensive workspace for rule development and testing.
+                              </div>
+                            </CardContent>
+                          </Card>
                         </div>
-                        <div>
-                          <Label className="text-base font-medium">Avg Time</Label>
-                          <div className="mt-2 p-4 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
-                            <div className="text-2xl font-bold text-yellow-600">
-                              {selectedRuleForEdit.avg_execution_time ? `${selectedRuleForEdit.avg_execution_time}ms` : 'N/A'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <Card>
-                        <CardHeader>
-                          <CardTitle className="text-lg">Configuration Preview</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="text-sm text-muted-foreground bg-muted p-4 rounded-md">
-                            Full editing capabilities will be available in the next version. For now, you can view rule details and test configurations.
-                            The sandbox environment provides a comprehensive workspace for rule development and testing.
-                          </div>
-                        </CardContent>
-                      </Card>
+                      </ScrollArea>
                     </TabsContent>
                     
-                    <TabsContent value="code" className="h-full mt-4">
-                      <div className="h-full border rounded-lg overflow-hidden">
+                    <TabsContent value="code" className="h-full mt-4 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden">
+                      <div className="flex-1 border rounded-lg overflow-hidden">
                         <RuleCodeEditor
                           rule={selectedRuleForEdit}
                           onTest={() => {}}
@@ -1019,8 +1027,8 @@ export function BusinessRulesTab() {
                       </div>
                     </TabsContent>
                     
-                    <TabsContent value="test" className="h-full mt-4">
-                      <div className="h-full border rounded-lg overflow-hidden">
+                    <TabsContent value="test" className="h-full mt-4 data-[state=active]:flex data-[state=active]:flex-col overflow-hidden">
+                      <div className="flex-1 border rounded-lg overflow-hidden">
                         <TestingFramework
                           rule={selectedRuleForEdit}
                           onTestComplete={handleTestComplete}
@@ -1038,135 +1046,139 @@ export function BusinessRulesTab() {
 
       {/* Approval Dialog */}
       <Dialog open={showApprovalDialog} onOpenChange={setShowApprovalDialog}>
-        <DialogContent className="w-[95vw] max-w-4xl h-[70vh] max-h-[85vh] p-0 gap-0">
+        <DialogContent className="w-[95vw] max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-4xl h-[95vh] sm:h-[90vh] md:h-[85vh] p-0 gap-0 overflow-hidden">
           <div className="flex flex-col h-full">
-            <DialogHeader className="px-6 py-4 border-b shrink-0">
-              <DialogTitle className="flex items-center gap-2">
-                <UserCheck className="w-5 h-5" />
+            <DialogHeader className="p-4 sm:p-6 border-b shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <UserCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                 Rule Approval Review
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-sm">
                 Review and approve or reject: {approvalRule?.name}
               </DialogDescription>
             </DialogHeader>
             
             {approvalRule && (
-              <div className="flex-1 overflow-hidden">
-                <ScrollArea className="h-full px-6 py-6">
-                  <div className="space-y-6">
-                    <div>
-                      <Label className="text-base font-medium mb-3 block">Rule Overview</Label>
-                      <Card>
-                        <CardContent className="p-6">
-                          <div className="space-y-4">
-                            <div>
-                              <h3 className="text-lg font-semibold">{approvalRule.name}</h3>
-                              <p className="text-muted-foreground mt-2 leading-relaxed">
-                                {approvalRule.description}
-                              </p>
-                            </div>
-                            
-                            <div className="flex flex-wrap gap-3">
-                              <Badge variant="outline" className="text-sm px-3 py-1">
-                                {approvalRule.rule_type || approvalRule.category}
-                              </Badge>
-                              <Badge className="text-sm px-3 py-1">
-                                {approvalRule.accuracy ? `${approvalRule.accuracy}% accuracy` : 'New rule'}
-                              </Badge>
-                              {approvalRule.ai_generated && (
-                                <Badge variant="secondary" className="text-sm px-3 py-1">
-                                  <Sparkles className="w-3 h-3 mr-1" />
-                                  AI Generated
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </div>
-
-                    <div>
-                      <Label className="text-base font-medium mb-3 block">Performance Metrics</Label>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <Card>
-                          <CardContent className="p-4 text-center">
-                            <div className="text-2xl font-bold text-blue-600">
-                              {approvalRule.accuracy ? `${approvalRule.accuracy}%` : 'N/A'}
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">Accuracy</div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="p-4 text-center">
-                            <div className="text-2xl font-bold text-green-600">
-                              {approvalRule.execution_count || 0}
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">Executions</div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="p-4 text-center">
-                            <div className="text-2xl font-bold text-yellow-600">
-                              {approvalRule.avg_execution_time ? `${approvalRule.avg_execution_time}ms` : 'N/A'}
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">Avg Time</div>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
-
-                    {approvalRule.rule_code && (
+              <>
+                <div className="flex-1 overflow-auto min-h-0">
+                  <ScrollArea className="h-full w-full">
+                    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
                       <div>
-                        <Label className="text-base font-medium mb-3 block">Rule Implementation</Label>
+                        <Label className="text-sm sm:text-base font-medium mb-3 block">Rule Overview</Label>
                         <Card>
-                          <CardContent className="p-4">
-                            <pre className="text-xs bg-muted p-4 rounded-md overflow-x-auto whitespace-pre-wrap max-h-40 overflow-y-auto">
-                              <code>{approvalRule.rule_code}</code>
-                            </pre>
+                          <CardContent className="p-3 sm:p-6">
+                            <div className="space-y-3 sm:space-y-4">
+                              <div>
+                                <h3 className="text-base sm:text-lg font-semibold">{approvalRule.name}</h3>
+                                <p className="text-muted-foreground mt-2 text-sm sm:text-base leading-relaxed">
+                                  {approvalRule.description}
+                                </p>
+                              </div>
+                              
+                              <div className="flex flex-wrap gap-2 sm:gap-3">
+                                <Badge variant="outline" className="text-xs sm:text-sm px-2 sm:px-3 py-1">
+                                  {approvalRule.rule_type || approvalRule.category}
+                                </Badge>
+                                <Badge className="text-xs sm:text-sm px-2 sm:px-3 py-1">
+                                  {approvalRule.accuracy ? `${approvalRule.accuracy}% accuracy` : 'New rule'}
+                                </Badge>
+                                {approvalRule.ai_generated && (
+                                  <Badge variant="secondary" className="text-xs sm:text-sm px-2 sm:px-3 py-1">
+                                    <Sparkles className="w-3 h-3 mr-1" />
+                                    AI Generated
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
                           </CardContent>
                         </Card>
                       </div>
-                    )}
-                    
-                    <div>
-                      <Label htmlFor="approvalComments" className="text-base font-medium">
-                        Approval Comments
-                      </Label>
-                      <Textarea
-                        id="approvalComments"
-                        placeholder="Add your review comments, concerns, or approval conditions..."
-                        value={approvalComments}
-                        onChange={(e) => setApprovalComments(e.target.value)}
-                        rows={6}
-                        className="mt-3 text-base"
-                      />
-                      <p className="text-sm text-muted-foreground mt-2">
-                        Your comments will be recorded and shared with the rule author.
-                      </p>
+
+                      <div>
+                        <Label className="text-sm sm:text-base font-medium mb-3 block">Performance Metrics</Label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                          <Card>
+                            <CardContent className="p-3 sm:p-4 text-center">
+                              <div className="text-lg sm:text-2xl font-bold text-blue-600">
+                                {approvalRule.accuracy ? `${approvalRule.accuracy}%` : 'N/A'}
+                              </div>
+                              <div className="text-xs sm:text-sm text-muted-foreground mt-1">Accuracy</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="p-3 sm:p-4 text-center">
+                              <div className="text-lg sm:text-2xl font-bold text-green-600">
+                                {approvalRule.execution_count || 0}
+                              </div>
+                              <div className="text-xs sm:text-sm text-muted-foreground mt-1">Executions</div>
+                            </CardContent>
+                          </Card>
+                          <Card>
+                            <CardContent className="p-3 sm:p-4 text-center">
+                              <div className="text-lg sm:text-2xl font-bold text-yellow-600">
+                                {approvalRule.avg_execution_time ? `${approvalRule.avg_execution_time}ms` : 'N/A'}
+                              </div>
+                              <div className="text-xs sm:text-sm text-muted-foreground mt-1">Avg Time</div>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      </div>
+
+                      {approvalRule.rule_code && (
+                        <div>
+                          <Label className="text-sm sm:text-base font-medium mb-3 block">Rule Implementation</Label>
+                          <Card>
+                            <CardContent className="p-3 sm:p-4">
+                              <pre className="text-xs bg-muted p-3 sm:p-4 rounded-md overflow-x-auto whitespace-pre-wrap max-h-32 sm:max-h-40 overflow-y-auto">
+                                <code>{approvalRule.rule_code}</code>
+                              </pre>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      )}
+                      
+                      <div>
+                        <Label htmlFor="approvalComments" className="text-sm sm:text-base font-medium">
+                          Approval Comments
+                        </Label>
+                        <Textarea
+                          id="approvalComments"
+                          placeholder="Add your review comments, concerns, or approval conditions..."
+                          value={approvalComments}
+                          onChange={(e) => setApprovalComments(e.target.value)}
+                          rows={4}
+                          className="mt-3 text-sm sm:text-base"
+                        />
+                        <p className="text-xs sm:text-sm text-muted-foreground mt-2">
+                          Your comments will be recorded and shared with the rule author.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </ScrollArea>
+                  </ScrollArea>
+                </div>
                 
-                <div className="border-t p-6 bg-muted/30 shrink-0">
-                  <div className="flex gap-3 justify-end">
-                    <Button variant="outline" onClick={() => setShowApprovalDialog(false)} size="lg">
+                {/* Fixed footer with approval buttons */}
+                <div className="border-t p-4 sm:p-6 bg-muted/30 shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
+                    <Button variant="outline" onClick={() => setShowApprovalDialog(false)} size="sm" className="sm:size-lg">
                       Cancel
                     </Button>
                     <Button 
                       variant="destructive" 
                       onClick={() => handleApproveRule(false)}
-                      size="lg"
+                      size="sm"
+                      className="sm:size-lg"
                     >
                       <X className="w-4 h-4 mr-2" />
                       Reject Rule
                     </Button>
-                    <Button onClick={() => handleApproveRule(true)} size="lg">
+                    <Button onClick={() => handleApproveRule(true)} size="sm" className="sm:size-lg">
                       <CheckCircle className="w-4 h-4 mr-2" />
                       Approve & Deploy
                     </Button>
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </DialogContent>
@@ -1174,22 +1186,23 @@ export function BusinessRulesTab() {
 
       {/* Rule Submission Dialog */}
       <Dialog open={showSubmissionDialog} onOpenChange={setShowSubmissionDialog}>
-        <DialogContent className="w-[95vw] max-w-4xl h-[70vh] max-h-[85vh] p-0 gap-0 overflow-hidden">
-          <div className="flex flex-col h-full overflow-hidden">
-            <DialogHeader className="px-6 py-4 border-b shrink-0">
-              <DialogTitle className="flex items-center gap-2">
-                <Rocket className="w-5 h-5" />
+        <DialogContent className="w-[95vw] max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-4xl h-[95vh] sm:h-[90vh] md:h-[85vh] p-0 gap-0 overflow-hidden">
+          <div className="flex flex-col h-full">
+            <DialogHeader className="p-4 sm:p-6 border-b shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Rocket className="w-4 h-4 sm:w-5 sm:h-5" />
                 Submit Rule for Approval
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-sm">
                 Submit "{submissionRule?.name}" to the MDM approval workflow
               </DialogDescription>
             </DialogHeader>
             
             {submissionRule && (
-              <div className="flex-1 overflow-hidden min-h-0">
-                <ScrollArea className="h-full w-full">
-                  <div className="p-6 space-y-8 min-h-full">
+              <>
+                <div className="flex-1 overflow-auto min-h-0">
+                  <ScrollArea className="h-full w-full">
+                    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-6">
                     {/* Rule Overview Card - Single cohesive section */}
                     <Card className="border-2 border-blue-200 dark:border-blue-800 shadow-lg">
                       <CardHeader className="pb-4">
@@ -1377,29 +1390,42 @@ export function BusinessRulesTab() {
                         </div>
                       </CardContent>
                     </Card>
-                  </div>
-                </ScrollArea>
+                    </div>
+                  </ScrollArea>
+                </div>
                 
-                <div className="border-t p-6 bg-muted/30 shrink-0 mt-auto">
-                  <div className="flex gap-3 justify-end">
+                {/* Fixed footer with submit buttons */}
+                <div className="border-t p-4 sm:p-6 bg-muted/30 shrink-0">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
                     <Button 
                       variant="outline" 
                       onClick={() => setShowSubmissionDialog(false)} 
-                      size="lg"
+                      size="sm"
+                      className="sm:size-lg"
                     >
                       Cancel
                     </Button>
                     <Button 
-                      onClick={handleConfirmSubmission} 
-                      size="lg"
-                      className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                      onClick={handleConfirmSubmission}
+                      disabled={submissionLoading || !submissionComments.trim() || !submissionPriority}
+                      size="sm"
+                      className="sm:size-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
                     >
-                      <Rocket className="w-4 h-4 mr-2" />
-                      Submit for {submissionPriority.charAt(0).toUpperCase() + submissionPriority.slice(1)} Priority Review
+                      {submissionLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                          Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Rocket className="w-4 h-4 mr-2" />
+                          Submit for Approval
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </DialogContent>

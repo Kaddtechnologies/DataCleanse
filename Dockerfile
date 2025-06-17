@@ -22,6 +22,13 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# Set production environment variables for build
+ENV NODE_ENV production
+ENV NEXT_PUBLIC_API_BASE_URL https://datacleanse.sliplane.app
+ENV NEXT_PUBLIC_FEATURE_AI_RULES true
+ENV NEXT_PUBLIC_FEATURE_ERP_INTEGRATION true
+ENV NEXT_PUBLIC_FEATURE_DATA_QUALITY true
+
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -31,6 +38,18 @@ WORKDIR /app
 ENV NODE_ENV production
 # Uncomment the following line in case you want to disable telemetry during runtime.
 ENV NEXT_TELEMETRY_DISABLED 1
+
+# Set production environment variables
+ENV NEXT_PUBLIC_API_BASE_URL https://datacleanse.sliplane.app
+ENV NEXT_PUBLIC_FEATURE_AI_RULES true
+ENV NEXT_PUBLIC_FEATURE_ERP_INTEGRATION true
+ENV NEXT_PUBLIC_FEATURE_DATA_QUALITY true
+
+# Database configuration - can be overridden by Sliplane environment variables
+ENV DATABASE_URL postgresql://mdm_user:mdm_password123@postgres:5432/mdm_dedup
+
+# Skip database health check for deployments without database
+ENV SKIP_DB_HEALTH_CHECK true
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

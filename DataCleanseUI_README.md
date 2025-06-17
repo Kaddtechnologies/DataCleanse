@@ -481,7 +481,7 @@ services:
 ```typescript
 export const environment = {
   apiBaseUrl: process.env.NODE_ENV === 'production'
-    ? 'https://datacleansing.redocean-27211e6a.centralus.azurecontainerapps.io'
+    ? 'https://datacleanse.sliplane.app'
     : 'http://localhost:8000',
   azureOpenAiEndpoint: 'https://devoai.openai.azure.com',
   openAiApiVersion: '2025-01-01-preview',

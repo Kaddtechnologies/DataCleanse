@@ -16,9 +16,18 @@ NC='\033[0m' # No Color
 DB_NAME="mdm_dedup"
 DB_USER="mdm_user"
 DB_PASSWORD="mdm_password123"
-DB_PORT="5433"
-CONTAINER_NAME="mdm-postgres"
-REDIS_CONTAINER_NAME="mdm-redis"
+# Use different ports for local vs production
+if [ "${NODE_ENV}" = "production" ]; then
+    DB_PORT="5432"
+    CONTAINER_NAME="mdm-postgres-cloud"
+    REDIS_CONTAINER_NAME="mdm-redis-cloud"
+    COMPOSE_FILE="docker-compose.cloud.yml"
+else
+    DB_PORT="5433"
+    CONTAINER_NAME="mdm-postgres"
+    REDIS_CONTAINER_NAME="mdm-redis"
+    COMPOSE_FILE="docker-compose.yml"
+fi
 
 print_header() {
     echo -e "${BLUE}"
@@ -121,8 +130,8 @@ start_database() {
         COMPOSE_CMD="docker-compose"
     fi
     
-    # Start the services
-    $COMPOSE_CMD up -d postgres
+    # Start the services using the appropriate compose file
+    $COMPOSE_CMD -f $COMPOSE_FILE up -d postgres
     
     print_info "Waiting for PostgreSQL to start..."
     sleep 10
@@ -152,8 +161,8 @@ start_redis() {
         COMPOSE_CMD="docker-compose"
     fi
     
-    # Start Redis
-    $COMPOSE_CMD up -d redis
+    # Start Redis using the appropriate compose file
+    $COMPOSE_CMD -f $COMPOSE_FILE up -d redis
     
     print_success "Redis is running on port 6379"
 }
@@ -214,7 +223,17 @@ seed_database() {
 create_env_file() {
     print_step "Creating environment configuration..."
     
-    ENV_FILE=".env.local"
+    if [ "${NODE_ENV}" = "production" ]; then
+        ENV_FILE=".env.production"
+        DB_HOST="postgres"  # Docker service name for production
+        API_BASE_URL="https://datacleanse.sliplane.app"
+        NODE_ENVIRONMENT="production"
+    else
+        ENV_FILE=".env.local"
+        DB_HOST="localhost"
+        API_BASE_URL="http://localhost:8000"
+        NODE_ENVIRONMENT="development"
+    fi
     
     if [ -f "$ENV_FILE" ]; then
         print_info "Backing up existing $ENV_FILE"
@@ -223,25 +242,31 @@ create_env_file() {
     
     cat > "$ENV_FILE" << EOF
 # Database Configuration
-DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME
-POSTGRES_HOST=localhost
+DATABASE_URL=postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME
+POSTGRES_HOST=$DB_HOST
 POSTGRES_PORT=$DB_PORT
 POSTGRES_DB=$DB_NAME
 POSTGRES_USER=$DB_USER
 POSTGRES_PASSWORD=$DB_PASSWORD
 
 # Redis Configuration (optional)
-REDIS_URL=redis://localhost:6379
+REDIS_URL=redis://$DB_HOST:6379
 
 # Application Configuration
-NODE_ENV=development
+NODE_ENV=$NODE_ENVIRONMENT
+NEXT_PUBLIC_API_BASE_URL=$API_BASE_URL
 
 # AI Configuration (add your API keys here)
 OPENAI_API_KEY=6kEA8jhAvaSiqoIDVUXygVWyLEKsmSUY0zIBOqsNeN2g0O6QWtWuJQQJ99BDACHYHv6XJ3w3AAABACOGTeiK
 GOOGLE_API_KEY=AIzaSyAGxugbJDi84dIQeIvx6moBPdCDwJdhJIw
 
+# Feature Flags
+NEXT_PUBLIC_FEATURE_AI_RULES=true
+NEXT_PUBLIC_FEATURE_ERP_INTEGRATION=true
+NEXT_PUBLIC_FEATURE_DATA_QUALITY=true
+
 # Embedding Service Configuration
-EMBEDDING_API_URL=http://localhost:8000/embed
+EMBEDDING_API_URL=http://$DB_HOST:8000/embed
 EOF
     
     print_success "Environment file created: $ENV_FILE"
@@ -251,25 +276,43 @@ EOF
 print_connection_info() {
     print_step "Database connection information:"
     echo ""
+    
+    if [ "${NODE_ENV}" = "production" ]; then
+        DB_HOST_DISPLAY="postgres (Docker service)"
+        COMPOSE_DOWN_CMD="docker-compose -f $COMPOSE_FILE down"
+        COMPOSE_UP_CMD="docker-compose -f $COMPOSE_FILE up -d"
+        echo -e "${BLUE}Production Configuration:${NC}"
+        echo "  Environment: Production"
+        echo "  API Base URL: https://datacleanse.sliplane.app"
+    else
+        DB_HOST_DISPLAY="localhost"
+        COMPOSE_DOWN_CMD="docker-compose down"
+        COMPOSE_UP_CMD="docker-compose up -d"
+        echo -e "${BLUE}Development Configuration:${NC}"
+        echo "  Environment: Development"
+        echo "  API Base URL: http://localhost:8000"
+    fi
+    
+    echo ""
     echo -e "${BLUE}PostgreSQL Database:${NC}"
-    echo "  Host: localhost"
+    echo "  Host: $DB_HOST_DISPLAY"
     echo "  Port: $DB_PORT"
     echo "  Database: $DB_NAME"
     echo "  Username: $DB_USER"
     echo "  Password: $DB_PASSWORD"
-    echo "  Connection URL: postgresql://$DB_USER:$DB_PASSWORD@localhost:$DB_PORT/$DB_NAME"
+    echo "  Connection URL: postgresql://$DB_USER:$DB_PASSWORD@$DB_HOST_DISPLAY:$DB_PORT/$DB_NAME"
     echo ""
     echo -e "${BLUE}Redis Cache:${NC}"
-    echo "  Host: localhost"
+    echo "  Host: $DB_HOST_DISPLAY"
     echo "  Port: 6379"
-    echo "  URL: redis://localhost:6379"
+    echo "  URL: redis://$DB_HOST_DISPLAY:6379"
     echo ""
     echo -e "${BLUE}Useful Commands:${NC}"
     echo "  Connect to database: docker exec -it $CONTAINER_NAME psql -U $DB_USER -d $DB_NAME"
     echo "  View logs: docker logs $CONTAINER_NAME"
-    echo "  Stop containers: docker-compose down"
-    echo "  Start containers: docker-compose up -d"
-    echo "  Remove all data: docker-compose down -v"
+    echo "  Stop containers: $COMPOSE_DOWN_CMD"
+    echo "  Start containers: $COMPOSE_UP_CMD"
+    echo "  Remove all data: $COMPOSE_DOWN_CMD -v"
     echo ""
 }
 
@@ -290,6 +333,14 @@ test_api_health() {
 
 main() {
     print_header
+    
+    if [ "${NODE_ENV}" = "production" ]; then
+        print_info "Running in PRODUCTION mode - setting up for Docker deployment at datacleanse.sliplane.app"
+        print_info "Using PostgreSQL port 5432 and docker-compose.cloud.yml configuration"
+    else
+        print_info "Running in DEVELOPMENT mode - setting up for local development"
+        print_info "Using PostgreSQL port 5433 and docker-compose.yml configuration"
+    fi
     
     print_info "This script will set up a complete PostgreSQL database with pgvector for MDM data cleansing."
     print_info "The database will be created in Docker containers for easy management."

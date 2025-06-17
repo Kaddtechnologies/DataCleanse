@@ -32,7 +32,7 @@ export const publicConfig = {
   // API Base URL (can be exposed to client)
   apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || (
     process.env.NODE_ENV === 'production'
-      ? 'https://datacleansing.redocean-27211e6a.centralus.azurecontainerapps.io'
+      ? 'https://datacleanse.sliplane.app'
       : 'http://localhost:8000'
   ),
   

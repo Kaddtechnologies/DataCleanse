@@ -14,7 +14,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Clock,
-  FileCheck
+  FileCheck,
+  Zap
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -215,18 +216,18 @@ export function MDMDashboard() {
               <Sparkles className="w-4 h-4 mr-2" />
               AI Rule Builder
             </TabsTrigger>
-            <TabsTrigger value="data-quality" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
+            {/* <TabsTrigger value="data-quality" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
               <Shield className="w-4 h-4 mr-2" />
               Data Quality
-            </TabsTrigger>
+            </TabsTrigger> */}
             <TabsTrigger value="erp-integration" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
               <Link2 className="w-4 h-4 mr-2" />
               ERP Integration
             </TabsTrigger>
-            <TabsTrigger value="governance" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
+            {/* <TabsTrigger value="governance" className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-blue-500 data-[state=active]:to-purple-600 data-[state=active]:text-white">
               <Scale className="w-4 h-4 mr-2" />
               Governance
-            </TabsTrigger>
+            </TabsTrigger> */}
           </TabsList>
 
           {/* Overview Tab */}
@@ -435,19 +436,84 @@ export function MDMDashboard() {
               <CardHeader>
                 <CardTitle>ERP Integration Hub</CardTitle>
                 <CardDescription>
-                  Connect and synchronize with enterprise systems
+                  Transform dirty data into enterprise-ready master data automatically
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                  <div className="p-4 rounded-full bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/30 dark:to-blue-800/30">
-                    <Link2 className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                <div className="space-y-6">
+                  {/* Hero Section */}
+                  <div className="text-center py-8 space-y-4">
+                    <div className="p-4 rounded-full bg-gradient-to-br from-blue-100 to-purple-200 dark:from-blue-900/30 dark:to-purple-800/30 w-20 h-20 mx-auto flex items-center justify-center">
+                      <Link2 className="w-10 h-10 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                      Seamless ERP Integration
+                    </h3>
+                    <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                      <strong>Dirty → Clean → Upload</strong> happens automatically. No more manual data exports, cleansing, and uploads.
+                    </p>
+                    <Badge variant="outline" className="text-base px-4 py-2">Q3 2025</Badge>
                   </div>
-                  <h3 className="text-xl font-semibold">Coming Soon</h3>
-                  <p className="text-muted-foreground text-center max-w-md">
-                    Direct integration with SAP, Oracle, Microsoft Dynamics, and other major ERP systems for seamless data synchronization.
-                  </p>
-                  <Badge variant="outline" className="mt-2">Q3 2025</Badge>
+
+                  {/* Key Benefits Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-950 dark:to-blue-900 border-blue-200 dark:border-blue-800">
+                      <CardContent className="p-6 text-center">
+                        <div className="p-3 rounded-full bg-blue-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
+                          <Zap className="w-6 h-6" />
+                        </div>
+                        <h4 className="font-semibold mb-2">Real-Time Cleansing</h4>
+                        <p className="text-sm text-muted-foreground">
+                          AI-powered rules clean data as it flows between systems
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+                      <CardContent className="p-6 text-center">
+                        <div className="p-3 rounded-full bg-green-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
+                          <TrendingUp className="w-6 h-6" />
+                        </div>
+                        <h4 className="font-semibold mb-2">Zero Manual Work</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Eliminate 80% of data prep time with automated pipelines
+                        </p>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-950 dark:to-purple-900 border-purple-200 dark:border-purple-800">
+                      <CardContent className="p-6 text-center">
+                        <div className="p-3 rounded-full bg-purple-500 text-white w-12 h-12 mx-auto flex items-center justify-center mb-4">
+                          <Shield className="w-6 h-6" />
+                        </div>
+                        <h4 className="font-semibold mb-2">Enterprise Scale</h4>
+                        <p className="text-sm text-muted-foreground">
+                          SAP, Oracle, Dynamics - all systems stay synchronized
+                        </p>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Value Proposition */}
+                  <Card className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200 dark:border-amber-800">
+                    <CardContent className="p-6">
+                      <div className="flex items-start gap-4">
+                        <div className="p-2 rounded-full bg-amber-500 text-white">
+                          <Activity className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-2">
+                            The Future of Master Data Management
+                          </h4>
+                          <p className="text-amber-800 dark:text-amber-200 leading-relaxed">
+                            Imagine your CRM, ERP, and warehouse systems always having perfect, clean data. 
+                            No more weekend data loads, no more "dirty data" firefights, no more manual reconciliation. 
+                            Just continuous, intelligent data harmony across your entire enterprise.
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </CardContent>
             </Card>
