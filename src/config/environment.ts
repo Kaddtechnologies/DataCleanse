@@ -26,9 +26,8 @@ function getBaseUrl() {
     // Default fallback for production
     return 'https://datacleanse.sliplane.app';
   }
-  
   // Development default
-  return 'http://localhost:3000';
+  return 'https://datacleanse.sliplane.app';
 }
 
 // Server-side only environment variables (sensitive data)
