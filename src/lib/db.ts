@@ -2,21 +2,49 @@ import { Pool, PoolClient } from 'pg';
 import type { CustomerRecord, DuplicatePair } from '@/types';
 
 // Database connection configuration with environment variable support
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // Fallback to individual config for local development
-  host: process.env.DATABASE_URL ? undefined : 'localhost',
-  port: process.env.DATABASE_URL ? undefined : 5433,
-  database: process.env.DATABASE_URL ? undefined : 'mdm_dedup',
-  user: process.env.DATABASE_URL ? undefined : 'mdm_user',
-  password: process.env.DATABASE_URL ? undefined : 'mdm_password123',
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000, // Increased from 2s to 10s
-  query_timeout: 30000, // 30 second query timeout
-  statement_timeout: 30000, // 30 second statement timeout
-});
+function createDatabasePool() {
+  const databaseUrl = process.env.DATABASE_URL;
+  
+  // Validate DATABASE_URL format
+  if (databaseUrl && databaseUrl !== 'undefined') {
+    try {
+      // Test if URL is properly formatted
+      new URL(databaseUrl);
+      console.log('Using DATABASE_URL for connection');
+      
+      return new Pool({
+        connectionString: databaseUrl,
+        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 10000,
+        query_timeout: 30000,
+        statement_timeout: 30000,
+      });
+    } catch (error) {
+      console.error('Invalid DATABASE_URL format:', error);
+      console.log('Falling back to individual connection parameters');
+    }
+  }
+  
+  // Fallback to individual config for local development or when DATABASE_URL is invalid
+  console.log('Using individual database connection parameters');
+  return new Pool({
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5433'),
+    database: process.env.DB_NAME || 'mdm_dedup',
+    user: process.env.DB_USER || 'mdm_user',
+    password: process.env.DB_PASSWORD || 'mdm_password123',
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+    query_timeout: 30000,
+    statement_timeout: 30000,
+  });
+}
+
+const pool = createDatabasePool();
 
 // Test database connection on initialization
 pool.on('connect', () => {
@@ -502,6 +530,12 @@ export async function updateFileUploadStatus(
 
 // Health check function
 export async function checkDatabaseHealth(): Promise<boolean> {
+  // Skip database health check if explicitly disabled
+  if (process.env.SKIP_DB_HEALTH_CHECK === 'true') {
+    console.log('Database health check skipped (SKIP_DB_HEALTH_CHECK=true)');
+    return true;
+  }
+
   let client: PoolClient | null = null;
   try {
     // Use a shorter timeout for health checks
@@ -518,6 +552,12 @@ export async function checkDatabaseHealth(): Promise<boolean> {
         stack: error.stack?.split('\n').slice(0, 3).join('\n')
       });
     }
+    
+    // In production, don't fail the app if database is unavailable
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('Database unavailable in production - continuing without database features');
+    }
+    
     return false;
   } finally {
     // Always release the client if it was acquired

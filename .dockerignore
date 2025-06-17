@@ -1,8 +1,76 @@
 # Dependencies
 node_modules
 npm-debug.log*
-.npm
-.pnpm-debug.log*
+
+# Testing
+coverage
+*.tgz
+
+# Production build (will be built inside container)
+.next
+out
+dist
+
+# Environment variables (will be set by Sliplane)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+logs
+
+# Runtime data
+pids
+*.pid
+*.seed
+
+# Documentation files (not needed in container)
+*.md
+docs/
+
+# Test files
+test/
+tests/
+__tests__/
+*.test.js
+*.test.ts
+*.spec.js
+*.spec.ts
+
+# Scripts (not needed in production)
+scripts/
+deploy-*.ps1
+test-*.ps1
+setup-*.ps1
+
+# Database files (database will be external)
+*.sql
+*.db
+
+# Backup files
+*.backup
 
 # Local env files
 .env*.local
@@ -31,33 +99,18 @@ build
 .vscode
 .idea
 
-# Testing
-coverage
-.nyc_output
-
-# Git
-.git
-.gitignore
-README.md
-
 # CI/CD
 .github
-
-# Logs
-logs
-*.log
 
 # Docker
 docker-compose*.yml
 .dockerignore
 
 # Scripts (not needed in container)
-scripts/
 *.ps1
 *.sh
 
 # Documentation
-*.md
 docs/
 
 # Test files
