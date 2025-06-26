@@ -29,19 +29,33 @@ function createDatabasePool() {
   
   // Fallback to individual config for local development or when DATABASE_URL is invalid
   console.log('Using individual database connection parameters');
-  return new Pool({
-    host: process.env.DB_HOST || 'localhost',
-    port: parseInt(process.env.DB_PORT || '5433'),
+  
+  // Use Azure container configuration in production
+  const isProduction = process.env.NODE_ENV === 'production';
+  const dbConfig = {
+    host: process.env.DB_HOST || (isProduction ? 'mdm-postgres-db.westus2.azurecontainer.io' : 'localhost'),
+    port: parseInt(process.env.DB_PORT || (isProduction ? '5432' : '5433')),
     database: process.env.DB_NAME || 'mdm_dedup',
-    user: process.env.DB_USER || 'mdm_user',
+    user: process.env.DB_USER || (isProduction ? 'postgres' : 'mdm_user'),
     password: process.env.DB_PASSWORD || 'mdm_password123',
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: isProduction ? { rejectUnauthorized: false } : false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
     query_timeout: 30000,
     statement_timeout: 30000,
+  };
+  
+  console.log('Database connection config:', {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    user: dbConfig.user,
+    ssl: dbConfig.ssl,
+    environment: process.env.NODE_ENV
   });
+  
+  return new Pool(dbConfig);
 }
 
 const pool = createDatabasePool();

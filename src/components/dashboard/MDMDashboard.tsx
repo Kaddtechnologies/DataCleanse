@@ -18,7 +18,15 @@ import {
   Zap,
   Plus,
   WifiOff,
-  Wifi
+  Wifi,
+  Settings,
+  TestTube2,
+  Eye,
+  EyeOff,
+  Key,
+  Globe,
+  Server,
+  Lock
 } from 'lucide-react';
 import { AppHeader } from '@/components/layout/header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +34,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { BusinessRulesTab } from './BusinessRulesTab';
 
@@ -66,6 +80,15 @@ const erpConnectorsData = [
     description: 'Connect to sync your business process data.', 
     lastSync: 'N/A', 
     syncedObjects: 0 
+  },
+  { 
+    id: 'opentext-opa', 
+    name: 'OpenText Process Automation(Cordys)', 
+    logo: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDIwMCAxMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMTAwIiBmaWxsPSIjRkZGRkZGIi8+CjxjaXJjbGUgY3g9IjMwIiBjeT0iNTAiIHI9IjE1IiBmaWxsPSIjRkY2NzAwIi8+CjxjaXJjbGUgY3g9IjUwIiBjeT0iNTAiIHI9IjE1IiBmaWxsPSIjRkY5QTAwIi8+CjxjaXJjbGUgY3g9IjcwIiBjeT0iNTAiIHI9IjE1IiBmaWxsPSIjRkZDQzAwIi8+Cjx0ZXh0IHg9IjkwIiB5PSI0NSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEyIiBmb250LXdlaWdodD0iYm9sZCIgZmlsbD0iIzMzMzMzMyI+T3BlblRleHQ8L3RleHQ+Cjx0ZXh0IHg9IjkwIiB5PSI2MCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjEwIiBmaWxsPSIjNjY2NjY2Ij5Qcm9jZXNzIEF1dG9tYXRpb248L3RleHQ+Cjwvc3ZnPg==', 
+    status: 'Connected' as const, 
+    description: 'Business Process Management and low-code platform for digital transformation.', 
+    lastSync: '5 minutes ago', 
+    syncedObjects: 76834 
   },
 ];
 
@@ -117,51 +140,64 @@ const ErpConnectorCard: React.FC<ErpConnectorCardProps> = ({
   description, 
   lastSync, 
   syncedObjects 
-}) => (
-  <Card className="group hover:shadow-xl hover:scale-[1.02] transition-all duration-300 backdrop-blur-sm bg-gradient-to-br from-white/80 to-white/40 dark:from-slate-900/80 dark:to-slate-900/40 border-white/20 dark:border-white/10 flex flex-col">
-    <CardHeader className="pb-4">
-      <div className="flex justify-between items-start">
-        <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-lg flex items-center justify-center p-2 border border-gray-200 dark:border-gray-600 shadow-sm">
-          <img 
-            src={logo} 
-            alt={`${name} logo`} 
-            className="max-w-full max-h-full object-contain" 
-            onError={(e) => { 
-              const target = e.target as HTMLImageElement;
-              target.onerror = null; 
-              target.src = `https://placehold.co/100x100/f0f0f0/333?text=${name.charAt(0)}`; 
-            }}
-          />
-        </div>
-        <StatusBadge status={status} />
-      </div>
-      <div className="mt-4">
-        <CardTitle className="text-lg">{name}</CardTitle>
-        <CardDescription className="text-sm mt-1 h-10 line-clamp-2">
-          {description}
-        </CardDescription>
-      </div>
-    </CardHeader>
-    <CardContent className="flex-1 flex flex-col justify-end">
-      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Last Sync:</span>
-          <span className="font-medium">{lastSync}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Synced Objects:</span>
-          <span className="font-medium">{syncedObjects.toLocaleString()}</span>
-        </div>
-        <Button 
-          variant="outline" 
-          className="w-full mt-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border-purple-200 dark:border-purple-800 hover:from-purple-100 hover:to-blue-100 dark:hover:from-purple-900/30 dark:hover:to-blue-900/30"
-        >
-          Manage Connection
-        </Button>
-      </div>
-    </CardContent>
-  </Card>
-);
+}) => {
+  const [showConnectionModal, setShowConnectionModal] = useState(false);
+
+  return (
+    <>
+      <Card className="group hover:shadow-xl hover:scale-[1.02] transition-all duration-300 backdrop-blur-sm bg-gradient-to-br from-white/80 to-white/40 dark:from-slate-900/80 dark:to-slate-900/40 border-white/20 dark:border-white/10 flex flex-col">
+        <CardHeader className="pb-4">
+          <div className="flex justify-between items-start">
+            <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-lg flex items-center justify-center p-2 border border-gray-200 dark:border-gray-600 shadow-sm">
+              <img 
+                src={logo} 
+                alt={`${name} logo`} 
+                className="max-w-full max-h-full object-contain" 
+                onError={(e) => { 
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null; 
+                  target.src = `https://placehold.co/100x100/f0f0f0/333?text=${name.charAt(0)}`; 
+                }}
+              />
+            </div>
+            <StatusBadge status={status} />
+          </div>
+          <div className="mt-4">
+            <CardTitle className="text-lg">{name}</CardTitle>
+            <CardDescription className="text-sm mt-1 h-10 line-clamp-2">
+              {description}
+            </CardDescription>
+          </div>
+        </CardHeader>
+        <CardContent className="flex-1 flex flex-col justify-end">
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Last Sync:</span>
+              <span className="font-medium">{lastSync}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Synced Objects:</span>
+              <span className="font-medium">{syncedObjects.toLocaleString()}</span>
+            </div>
+            <Button 
+              variant="outline" 
+              className="w-full mt-4 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 border-purple-200 dark:border-purple-800 hover:from-purple-100 hover:to-blue-100 dark:hover:from-purple-900/30 dark:hover:to-blue-900/30"
+              onClick={() => setShowConnectionModal(true)}
+            >
+              Manage Connection
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConnectionManagementModal
+        isOpen={showConnectionModal}
+        onClose={() => setShowConnectionModal(false)}
+        connector={{ name, logo, status, description, lastSync, syncedObjects }}
+      />
+    </>
+  );
+};
 
 // Metric Card Component with executive-grade styling
 interface MetricCardProps {
@@ -252,6 +288,930 @@ const QuickActionCard: React.FC<QuickActionProps> = ({ title, description, icon,
         </div>
       </CardHeader>
     </Card>
+  );
+};
+
+// Connection Configuration Types
+interface ConnectionConfig {
+  sapS4Hana: {
+    authMethod: 'oauth2' | 'tba';
+    baseUrl: string;
+    clientId: string;
+    clientSecret: string;
+    tokenId?: string;
+    tokenSecret?: string;
+    accountId?: string;
+    systemId?: string;
+    apiVersion: string;
+    sslEnabled: boolean;
+  };
+  salesforce: {
+    authMethod: 'oauth2' | 'userpass';
+    environment: 'production' | 'sandbox';
+    instanceUrl: string;
+    clientId: string;
+    clientSecret: string;
+    username?: string;
+    password?: string;
+    securityToken?: string;
+    apiVersion: string;
+  };
+  oracle: {
+    authMethod: 'oauth2' | 'tba';
+    accountId: string;
+    consumerKey: string;
+    consumerSecret: string;
+    tokenId?: string;
+    tokenSecret?: string;
+    baseUrl: string;
+    roleId?: string;
+    scriptDeployment?: string;
+  };
+  dynamics: {
+    authMethod: 'oauth2' | 'clientCredentials';
+    tenantId: string;
+    clientId: string;
+    clientSecret: string;
+    resourceUrl: string;
+    authorityUrl: string;
+    apiVersion: string;
+    environment: 'production' | 'sandbox';
+  };
+  opentextOpa: {
+    authMethod: 'otds' | 'basicAuth' | 'saml';
+    serverUrl: string;
+    organizationName: string;
+    username: string;
+    password: string;
+    otdsUrl?: string;
+    partitionName?: string;
+    sslEnabled: boolean;
+    apiVersion: string;
+    connectionType: 'soap' | 'rest' | 'entityservice';
+    enableBpm: boolean;
+    enableDcm: boolean;
+  };
+}
+
+// Connection Management Modal Component
+interface ConnectionManagementModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  connector: {
+    name: string;
+    logo: string;
+    status: 'Connected' | 'Warning' | 'Not Connected';
+    description: string;
+    lastSync: string;
+    syncedObjects: number;
+  };
+}
+
+const ConnectionManagementModal: React.FC<ConnectionManagementModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  connector 
+}) => {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState('connection');
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [formData, setFormData] = useState<any>({});
+
+  const getSystemKey = (name: string) => {
+    switch (name.toLowerCase()) {
+      case 'sap s/4hana':
+        return 'sapS4Hana';
+      case 'salesforce':
+        return 'salesforce';
+      case 'oracle netsuite':
+        return 'oracle';
+      case 'microsoft dynamics 365':
+        return 'dynamics';
+      case 'opentext process automation':
+        return 'opentextOpa';
+      default:
+        return 'salesforce';
+    }
+  };
+
+  const testConnection = async () => {
+    setTestingConnection(true);
+    // Simulate connection test
+    setTimeout(() => {
+      setTestingConnection(false);
+      toast({
+        title: "Connection Test",
+        description: "Connection test completed successfully!",
+        variant: "default"
+      });
+    }, 2000);
+  };
+
+  const handleSave = () => {
+    toast({
+      title: "Connection Saved",
+      description: `${connector.name} connection has been updated successfully.`,
+      variant: "default"
+    });
+    onClose();
+  };
+
+  const renderConnectionForm = () => {
+    const systemKey = getSystemKey(connector.name);
+
+    switch (systemKey) {
+      case 'sapS4Hana':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold">SAP S/4HANA Configuration</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="auth-method">Authentication Method</Label>
+                  <Select defaultValue="oauth2">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="oauth2">OAuth 2.0</SelectItem>
+                      <SelectItem value="tba">Token-Based Authentication</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="api-version">API Version</Label>
+                  <Select defaultValue="v2">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="v2">OData V2</SelectItem>
+                      <SelectItem value="v4">OData V4</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="base-url">Base URL</Label>
+                <Input 
+                  id="base-url"
+                  placeholder="https://my-sap-system.sap.ondemand.com"
+                  defaultValue="https://my-sap-system.sap.ondemand.com"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="client-id">Consumer Key / Client ID</Label>
+                  <Input 
+                    id="client-id"
+                    placeholder="Enter consumer key"
+                    defaultValue="SB-cl1234567890!b1|client!b1"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="client-secret">Consumer Secret</Label>
+                  <div className="relative">
+                    <Input 
+                      id="client-secret"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter consumer secret"
+                      defaultValue="AbCd1234567890EfGh="
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="system-id">System ID</Label>
+                  <Input 
+                    id="system-id"
+                    placeholder="Enter system ID"
+                    defaultValue="S4H"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="account-id">Account ID</Label>
+                  <Input 
+                    id="account-id"
+                    placeholder="Enter account ID"
+                    defaultValue="12345"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Switch id="ssl-enabled" defaultChecked />
+                <Label htmlFor="ssl-enabled">Enable SSL/TLS</Label>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'salesforce':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-blue-600" />
+                <h3 className="text-lg font-semibold">Salesforce Configuration</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="environment">Environment</Label>
+                  <Select defaultValue="production">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="production">Production</SelectItem>
+                      <SelectItem value="sandbox">Sandbox</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="api-version">API Version</Label>
+                  <Select defaultValue="v58.0">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="v58.0">v58.0 (Winter '24)</SelectItem>
+                      <SelectItem value="v57.0">v57.0 (Summer '23)</SelectItem>
+                      <SelectItem value="v56.0">v56.0 (Spring '23)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="instance-url">Instance URL</Label>
+                <Input 
+                  id="instance-url"
+                  placeholder="https://mycompany.my.salesforce.com"
+                  defaultValue="https://mycompany.my.salesforce.com"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="client-id">Consumer Key</Label>
+                  <Input 
+                    id="client-id"
+                    placeholder="Enter consumer key"
+                    defaultValue="3MVG9SemV5D80oBeFBHg.example"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="client-secret">Consumer Secret</Label>
+                  <div className="relative">
+                    <Input 
+                      id="client-secret"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter consumer secret"
+                      defaultValue="1234567890123456789"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="username">Username</Label>
+                <Input 
+                  id="username"
+                  placeholder="user@company.com"
+                  defaultValue="integration@mycompany.com"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="security-token">Security Token</Label>
+                <Input 
+                  id="security-token"
+                  placeholder="Enter security token"
+                  defaultValue="AQAQAQAQAQAQAQAQAQ"
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'oracle':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-red-600" />
+                <h3 className="text-lg font-semibold">Oracle NetSuite Configuration</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="auth-method">Authentication Method</Label>
+                  <Select defaultValue="oauth2">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="oauth2">OAuth 2.0</SelectItem>
+                      <SelectItem value="tba">Token-Based Authentication</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="account-id">Account ID</Label>
+                  <Input 
+                    id="account-id"
+                    placeholder="Enter account ID"
+                    defaultValue="123456_SB1"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="base-url">Base URL</Label>
+                <Input 
+                  id="base-url"
+                  placeholder="https://123456-sb1.suitetalk.api.netsuite.com"
+                  defaultValue="https://123456-sb1.suitetalk.api.netsuite.com"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="consumer-key">Consumer Key</Label>
+                  <Input 
+                    id="consumer-key"
+                    placeholder="Enter consumer key"
+                    defaultValue="abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="consumer-secret">Consumer Secret</Label>
+                  <div className="relative">
+                    <Input 
+                      id="consumer-secret"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter consumer secret"
+                      defaultValue="abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="token-id">Token ID</Label>
+                  <Input 
+                    id="token-id"
+                    placeholder="Enter token ID"
+                    defaultValue="abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="token-secret">Token Secret</Label>
+                  <div className="relative">
+                    <Input 
+                      id="token-secret"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter token secret"
+                      defaultValue="abc123def456ghi789jkl012mno345pqr678stu901vwx234yz"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="role-id">Role ID</Label>
+                <Input 
+                  id="role-id"
+                  placeholder="Enter role ID (optional)"
+                  defaultValue="3"
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'dynamics':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-purple-600" />
+                <h3 className="text-lg font-semibold">Microsoft Dynamics 365 Configuration</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="environment">Environment</Label>
+                  <Select defaultValue="production">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="production">Production</SelectItem>
+                      <SelectItem value="sandbox">Sandbox</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="api-version">API Version</Label>
+                  <Select defaultValue="v9.2">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="v9.2">v9.2</SelectItem>
+                      <SelectItem value="v9.1">v9.1</SelectItem>
+                      <SelectItem value="v9.0">v9.0</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="resource-url">Resource URL</Label>
+                <Input 
+                  id="resource-url"
+                  placeholder="https://orgname.api.crm.dynamics.com"
+                  defaultValue="https://myorg.api.crm.dynamics.com"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="tenant-id">Tenant ID</Label>
+                  <Input 
+                    id="tenant-id"
+                    placeholder="Enter tenant ID"
+                    defaultValue="12345678-1234-1234-1234-123456789012"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="client-id">Application ID</Label>
+                  <Input 
+                    id="client-id"
+                    placeholder="Enter application ID"
+                    defaultValue="87654321-4321-4321-4321-210987654321"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="client-secret">Client Secret</Label>
+                <div className="relative">
+                  <Input 
+                    id="client-secret"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter client secret"
+                    defaultValue="AbC123dEf456GhI789jKl012MnO345pQr678StU901VwX234yZ"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="authority-url">Authority URL</Label>
+                <Input 
+                  id="authority-url"
+                  placeholder="https://login.microsoftonline.com/tenant-id"
+                  defaultValue="https://login.microsoftonline.com/12345678-1234-1234-1234-123456789012"
+                />
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'opentextOpa':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-orange-600" />
+                <h3 className="text-lg font-semibold">OpenText Process Automation Configuration</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="auth-method">Authentication Method</Label>
+                  <Select defaultValue="otds">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="otds">OTDS (OpenText Directory Services)</SelectItem>
+                      <SelectItem value="basicAuth">Basic Authentication</SelectItem>
+                      <SelectItem value="saml">SAML Authentication</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="connection-type">Connection Type</Label>
+                  <Select defaultValue="entityservice">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="soap">SOAP Web Services</SelectItem>
+                      <SelectItem value="rest">REST API</SelectItem>
+                      <SelectItem value="entityservice">Entity Service</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="server-url">Server URL</Label>
+                <Input 
+                  id="server-url"
+                  placeholder="https://appworks.company.com:8080"
+                  defaultValue="https://appworks.company.com:8080"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="organization">Organization Name</Label>
+                  <Input 
+                    id="organization"
+                    placeholder="Enter organization name"
+                    defaultValue="myorg"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="api-version">API Version</Label>
+                  <Select defaultValue="24.4">
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="24.4">24.4 (Latest)</SelectItem>
+                      <SelectItem value="24.3">24.3</SelectItem>
+                      <SelectItem value="24.2">24.2</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input 
+                    id="username"
+                    placeholder="user@company.com"
+                    defaultValue="integration@company.com"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <div className="relative">
+                    <Input 
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="Enter password"
+                      defaultValue="SecurePassword123!"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="otds-url">OTDS URL (Optional)</Label>
+                <Input 
+                  id="otds-url"
+                  placeholder="https://otds.company.com:8443"
+                  defaultValue="https://otds.company.com:8443"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="partition-name">OTDS Partition Name</Label>
+                <Input 
+                  id="partition-name"
+                  placeholder="Enter partition name"
+                  defaultValue="AppWorksPartition"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Switch id="ssl-enabled" defaultChecked />
+                  <Label htmlFor="ssl-enabled">Enable SSL/TLS</Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch id="enable-bpm" defaultChecked />
+                  <Label htmlFor="enable-bpm">Enable BPM Integration</Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch id="enable-dcm" defaultChecked />
+                  <Label htmlFor="enable-dcm">Enable Dynamic Case Management</Label>
+                </div>
+              </div>
+
+              <div className="p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
+                <div className="flex items-start gap-3">
+                  <div className="p-1 rounded-full bg-orange-500 text-white">
+                    <Activity className="w-4 h-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="font-medium text-orange-900 dark:text-orange-100">
+                      Platform Overview
+                    </h4>
+                    <p className="text-sm text-orange-800 dark:text-orange-200">
+                      OpenText Process Automation (formerly Cordys) provides Business Process Management, 
+                      low-code development, Entity Services, and AI-powered automation capabilities. 
+                      This connector supports both cloud and on-premise deployments.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      default:
+        return <div>Configuration form not available for this system.</div>;
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-lg flex items-center justify-center p-2 border border-gray-200 dark:border-gray-600 shadow-sm">
+              <img 
+                src={connector.logo} 
+                alt={`${connector.name} logo`} 
+                className="max-w-full max-h-full object-contain" 
+                onError={(e) => { 
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null; 
+                  target.src = `https://placehold.co/100x100/f0f0f0/333?text=${connector.name.charAt(0)}`; 
+                }}
+              />
+            </div>
+            <div>
+              <DialogTitle className="text-xl">{connector.name} Connection</DialogTitle>
+              <DialogDescription>
+                Configure and manage your {connector.name} integration settings
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 overflow-hidden flex flex-col">
+          <TabsList className="grid w-full grid-cols-3 flex-shrink-0">
+            <TabsTrigger value="connection">Connection</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
+          </TabsList>
+
+          <div className="flex-1 overflow-y-auto">
+            <TabsContent value="connection" className="space-y-6 p-1">
+              {renderConnectionForm()}
+            </TabsContent>
+
+            <TabsContent value="settings" className="space-y-6 p-1">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-gray-600" />
+                  <h3 className="text-lg font-semibold">Sync Settings</h3>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sync-frequency">Sync Frequency</Label>
+                    <Select defaultValue="hourly">
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="realtime">Real-time</SelectItem>
+                        <SelectItem value="15min">Every 15 minutes</SelectItem>
+                        <SelectItem value="hourly">Hourly</SelectItem>
+                        <SelectItem value="daily">Daily</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="batch-size">Batch Size</Label>
+                    <Select defaultValue="1000">
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="100">100 records</SelectItem>
+                        <SelectItem value="500">500 records</SelectItem>
+                        <SelectItem value="1000">1000 records</SelectItem>
+                        <SelectItem value="5000">5000 records</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Enable Error Notifications</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Get notified when sync errors occur
+                      </p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Auto-retry Failed Operations</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Automatically retry failed sync operations
+                      </p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Enable Data Compression</Label>
+                      <p className="text-sm text-muted-foreground">
+                        Compress data during transmission
+                      </p>
+                    </div>
+                    <Switch defaultChecked />
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="monitoring" className="space-y-6 p-1">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-green-600" />
+                  <h3 className="text-lg font-semibold">Connection Status</h3>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Last Sync</p>
+                          <p className="text-lg font-bold">{connector.lastSync}</p>
+                        </div>
+                        <Clock className="w-8 h-8 text-blue-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Records Synced</p>
+                          <p className="text-lg font-bold">{connector.syncedObjects.toLocaleString()}</p>
+                        </div>
+                        <Database className="w-8 h-8 text-green-500" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Connection Health</Label>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Overall Health</span>
+                      <span className="font-medium text-green-600">Excellent</span>
+                    </div>
+                    <Progress value={95} className="h-2" />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Recent Activity</Label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    <div className="flex items-center justify-between py-2 px-3 bg-muted rounded-lg">
+                      <span className="text-sm">Data sync completed</span>
+                      <span className="text-xs text-muted-foreground">2 minutes ago</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 px-3 bg-muted rounded-lg">
+                      <span className="text-sm">Authentication refreshed</span>
+                      <span className="text-xs text-muted-foreground">1 hour ago</span>
+                    </div>
+                    <div className="flex items-center justify-between py-2 px-3 bg-muted rounded-lg">
+                      <span className="text-sm">Schema validation passed</span>
+                      <span className="text-xs text-muted-foreground">3 hours ago</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          </div>
+        </Tabs>
+
+        <Separator className="flex-shrink-0" />
+        
+        <div className="flex justify-between items-center flex-shrink-0">
+          <Button
+            variant="outline"
+            onClick={testConnection}
+            disabled={testingConnection}
+            className="flex items-center gap-2"
+          >
+            <TestTube2 className="w-4 h-4" />
+            {testingConnection ? "Testing..." : "Test Connection"}
+          </Button>
+          
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+              Save Configuration
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

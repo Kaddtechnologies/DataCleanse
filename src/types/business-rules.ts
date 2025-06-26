@@ -197,17 +197,17 @@ export interface TestCase {
  * Result of running a test case
  */
 export interface TestResult {
-  /** Test case that was run */
-  testCaseId: string;
+  /** Test case that was run (for individual test results) */
+  testCaseId?: string;
   
-  /** Whether the test passed */
-  passed: boolean;
+  /** Whether the test passed (for individual test results) or number of passed tests (for aggregate results) */
+  passed: boolean | number;
   
-  /** Actual output from the rule */
-  actualOutput: RuleResult;
+  /** Actual output from the rule (for individual test results) */
+  actualOutput?: RuleResult;
   
-  /** Expected output for comparison */
-  expectedOutput: {
+  /** Expected output for comparison (for individual test results) */
+  expectedOutput?: {
     confidence: 'high' | 'medium' | 'low';
     recommendation: 'merge' | 'review' | 'reject' | 'flag';
     shouldTrigger: boolean;
@@ -216,13 +216,13 @@ export interface TestResult {
   /** Test accuracy percentage */
   accuracy?: number;
   
-  /** Number of failed tests */
+  /** Number of failed tests (for aggregate results) */
   failed?: number;
   
-  /** Total number of tests */
+  /** Total number of tests (for aggregate results) */
   totalTests?: number;
   
-  /** Detailed test results */
+  /** Detailed test results (for aggregate results) */
   results?: any[];
   
   /** Average execution time in milliseconds */
@@ -231,15 +231,15 @@ export interface TestResult {
   /** Suggested additional tests */
   suggestedTests?: TestCase[];
   
-  /** Detailed comparison of differences */
+  /** Detailed comparison of differences (for individual test results) */
   differences?: {
     field: string;
     expected: any;
     actual: any;
   }[];
   
-  /** Execution details */
-  execution: {
+  /** Execution details (for individual test results) */
+  execution?: {
     duration: number;
     timestamp: string;
     error?: string;

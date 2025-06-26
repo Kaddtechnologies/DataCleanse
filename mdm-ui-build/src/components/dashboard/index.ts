@@ -1,0 +1,1 @@
+export { MDMDashboard } from './MDMDashboard';

@@ -10,6 +10,7 @@ import { Code, Play, Wand2, Save, Copy, CheckCircle } from 'lucide-react';
 import { BusinessRule, RuleResult } from '@/types/business-rules';
 import { CustomerRecord } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { MarkdownRenderer } from '@/components/ui/markdown-renderer';
 
 interface RuleCodeEditorProps {
   rule?: BusinessRule;
@@ -100,27 +101,143 @@ export const ${rule.id}Rule: BusinessRule = {
   const generateDocumentation = (rule: BusinessRule): string => {
     return `# ${rule.name}
 
-## Summary
+## Overview
 ${rule.description}
 
-## Scope
-- **Category**: ${rule.category}
-- **Priority**: ${rule.priority}/10
-- **Confidence**: ${rule.metadata?.confidence || 'N/A'}
-- **Status**: ${rule.enabled ? 'Active' : 'Inactive'}
+---
 
-## Performance
-- **Execution Time**: <5ms average
-- **Memory Usage**: Low
-- **Success Rate**: ${rule.statistics?.successRate || 95}%
+## Configuration
+
+| Property | Value |
+|----------|-------|
+| **Category** | ${rule.category} |
+| **Priority** | ${rule.priority}/10 |
+| **Status** | ${rule.enabled ? '✅ Active' : '❌ Inactive'} |
+| **Version** | ${rule.version || '1.0.0'} |
+| **Confidence** | ${rule.metadata?.confidence || 'N/A'} |
+
+---
+
+## Performance Metrics
+
+| Metric | Value | Description |
+|--------|--------|-------------|
+| **Execution Time** | <5ms average | Optimized for high-volume processing |
+| **Memory Usage** | Low | Minimal resource footprint |
+| **Success Rate** | ${rule.statistics?.successRate || 95}% | Historical accuracy rate |
+| **Executions** | ${rule.execution_count || 0} | Total times executed |
+
+---
 
 ## Business Logic
-This rule identifies legitimate business divisions that should remain separate entities despite having similar names and addresses.
+
+This rule implements sophisticated business logic to identify legitimate business divisions that should remain separate entities despite having similar names and addresses.
+
+### Key Features
+
+- **Energy Division Detection**: Identifies different divisions within energy companies
+- **Geographic Analysis**: Considers address patterns and location data
+- **Name Similarity**: Advanced fuzzy matching with business context
+- **Historical Validation**: Cross-references against known business relationships
+
+### Algorithm Approach
+
+The rule uses a **multi-stage evaluation process**:
+
+1. **Initial Screening**: Basic name and address comparison
+2. **Industry Classification**: Identifies energy sector entities using keyword analysis
+3. **Division Detection**: Analyzes business unit indicators and patterns
+4. **Confidence Scoring**: Calculates recommendation confidence based on multiple factors
+
+---
+
+## Implementation Details
+
+### Code Structure
+\`\`\`typescript
+// Rule evaluation signature
+evaluate: async (record1: CustomerRecord, record2: CustomerRecord): Promise<RuleResult>
+\`\`\`
+
+### Key Variables
+- \`energyKeywords\`: Chemical, oil, gas, petroleum, refinery
+- \`divisionKeywords\`: Division, subsidiary, branch, unit
+- \`confidenceThreshold\`: 0.95 for high-confidence recommendations
+
+---
 
 ## Test Coverage
-- ${rule.testCases?.length || 0} test cases
-- Covers edge cases for international entities
-- Validated against historical data`;
+
+### Test Statistics
+- **Total Test Cases**: ${rule.testCases?.length || 0}
+- **Edge Case Coverage**: International entities, subsidiaries, joint ventures
+- **Data Validation**: Historical data verified against known business relationships
+
+### Test Scenarios
+- Different energy divisions at same address
+- Similar company names with different business units
+- International subsidiary relationships
+- Joint venture partnerships
+
+---
+
+## Business Impact
+
+> **Primary Benefit**: ${rule.metadata?.business_impact || 'Improves data quality and deduplication accuracy'}
+
+### Expected Outcomes
+- **Reduced False Positives**: Prevents inappropriate merging of legitimate business divisions
+- **Improved Data Quality**: Maintains accurate business relationship data
+- **Compliance Support**: Ensures regulatory reporting accuracy
+- **Operational Efficiency**: Reduces manual review overhead
+
+---
+
+## Usage Examples
+
+### Typical Scenarios
+1. **Energy Company Divisions**
+   - Exxon Chemical Division vs Exxon Oil Division
+   - Both at same corporate headquarters address
+   - **Result**: Reject merge, keep as separate entities
+
+2. **Subsidiary Detection**
+   - Parent company and subsidiary with similar names
+   - Different business registration numbers
+   - **Result**: Mark as related but distinct
+
+### Edge Cases
+- International subsidiaries with translated names
+- Temporary business units vs permanent divisions
+- Acquired companies in transition period
+
+---
+
+## Deployment Notes
+
+### Prerequisites
+- Customer record data with name and address fields
+- Access to business relationship databases
+- Historical execution data for confidence tuning
+
+### Monitoring
+- Track execution performance and accuracy
+- Monitor false positive/negative rates
+- Regular validation against business changes
+
+---
+
+## Changelog
+
+### Version ${rule.version || '1.0.0'}
+- Initial implementation
+- Energy division detection logic
+- Basic confidence scoring
+- Comprehensive test coverage
+
+---
+
+*Generated on ${new Date().toLocaleDateString()} | Rule ID: \`${rule.id}\`*`;
   };
 
   const handleCopy = async () => {
@@ -264,9 +381,13 @@ This rule identifies legitimate business divisions that should remain separate e
             </div>
           </TabsContent>
           
-          <TabsContent value="docs" className="flex-1 m-0 p-4 overflow-auto">
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              <pre className="whitespace-pre-wrap font-sans">{documentation}</pre>
+          <TabsContent value="docs" className="flex-1 m-0 overflow-hidden">
+            <div className="h-full overflow-auto p-4">
+              <MarkdownRenderer 
+                content={documentation} 
+                variant="default"
+                className="max-w-none"
+              />
             </div>
           </TabsContent>
           

@@ -16,11 +16,16 @@ import {
   BarChart,
   Clock,
   Cpu,
-  Database
+  Database,
+  Zap,
+  Square,
+  RefreshCw
 } from 'lucide-react';
 import { BusinessRule, TestCase, TestResult } from '@/types/business-rules';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { PhaseProgressIndicator, TestPhase } from './PhaseProgressIndicator';
+import { EnhancedTestingFramework } from './EnhancedTestingFramework';
 
 interface TestingFrameworkProps {
   rule?: BusinessRule;
@@ -32,6 +37,8 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
   const [isRunning, setIsRunning] = useState(false);
   const [testResults, setTestResults] = useState<TestResult | null>(null);
   const [selectedTest, setSelectedTest] = useState<string | null>(null);
+  const [useEnhancedMode, setUseEnhancedMode] = useState(true);
+  const [currentPhase, setCurrentPhase] = useState<TestPhase>('idle');
   const { toast } = useToast();
 
   const runTests = async () => {
@@ -91,6 +98,11 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
     );
   }
 
+  // If enhanced mode is enabled, use the new framework
+  if (useEnhancedMode) {
+    return <EnhancedTestingFramework rule={rule} onTestComplete={onTestComplete} onDeploy={onDeploy} />;
+  }
+
   const accuracy = testResults ? testResults.accuracy : 0;
   const passed = testResults ? testResults.passed : 0;
   const failed = testResults ? testResults.failed : 0;
@@ -103,8 +115,20 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
           <CardTitle className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-green-600" />
             Testing Environment
+            <Badge variant="outline" className="ml-2 text-xs">
+              {useEnhancedMode ? 'Enhanced' : 'Standard'}
+            </Badge>
           </CardTitle>
           <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setUseEnhancedMode(!useEnhancedMode)}
+              className="text-xs"
+            >
+              <Zap className="w-3 h-3 mr-1" />
+              {useEnhancedMode ? 'Standard Mode' : 'Enhanced Mode'}
+            </Button>
             {testResults && (
               <Badge 
                 variant={failed === 0 ? "default" : "destructive"}

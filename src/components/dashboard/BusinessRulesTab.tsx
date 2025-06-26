@@ -1060,9 +1060,9 @@ export function BusinessRulesTab() {
             
             {approvalRule && (
               <>
-                <div className="flex-1 overflow-auto min-h-0">
+                <div className="flex-1 overflow-hidden min-h-0">
                   <ScrollArea className="h-full w-full">
-                    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+                    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-4">
                       <div>
                         <Label className="text-sm sm:text-base font-medium mb-3 block">Rule Overview</Label>
                         <Card>
@@ -1129,7 +1129,7 @@ export function BusinessRulesTab() {
                           <Label className="text-sm sm:text-base font-medium mb-3 block">Rule Implementation</Label>
                           <Card>
                             <CardContent className="p-3 sm:p-4">
-                              <pre className="text-xs bg-muted p-3 sm:p-4 rounded-md overflow-x-auto whitespace-pre-wrap max-h-32 sm:max-h-40 overflow-y-auto">
+                              <pre className="text-xs bg-muted p-3 sm:p-4 rounded-md overflow-x-auto whitespace-pre-wrap">
                                 <code>{approvalRule.rule_code}</code>
                               </pre>
                             </CardContent>
@@ -1200,9 +1200,9 @@ export function BusinessRulesTab() {
             
             {submissionRule && (
               <>
-                <div className="flex-1 overflow-auto min-h-0">
+                <div className="flex-1 overflow-hidden min-h-0">
                   <ScrollArea className="h-full w-full">
-                    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-6">
+                    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 pb-4">
                     {/* Rule Overview Card - Single cohesive section */}
                     <Card className="border-2 border-blue-200 dark:border-blue-800 shadow-lg">
                       <CardHeader className="pb-4">
