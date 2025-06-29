@@ -127,7 +127,7 @@ function TestRuleModal({ rule, isOpen, onClose }: { rule: any; isOpen: boolean; 
                     </div>
                     <div>
                       <div className="text-slate-600 dark:text-slate-400">Accuracy</div>
-                      <div className="text-2xl font-bold text-emerald-600">{testResults.accuracy.toFixed(1)}%</div>
+                      <div className="text-2xl font-bold text-emerald-600">{testResults?.accuracy?.toFixed(1)}%</div>
                     </div>
                   </div>
 

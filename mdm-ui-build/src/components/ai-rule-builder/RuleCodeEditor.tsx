@@ -183,7 +183,7 @@ evaluate: async (record1: CustomerRecord, record2: CustomerRecord): Promise<Rule
 
 ## Business Impact
 
-> **Primary Benefit**: ${rule.metadata?.business_impact || 'Improves data quality and deduplication accuracy'}
+> **Primary Benefit**: Improves data quality and deduplication accuracy
 
 ### Expected Outcomes
 - **Reduced False Positives**: Prevents inappropriate merging of legitimate business divisions

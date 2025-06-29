@@ -1,0 +1,9 @@
+--- Log started at 2025-06-29T20:32:41.388Z ---
+[DEBUG] Using transport: stdio
+[DEBUG] No existing Firebase app, initializing new one
+[DEBUG] Service account file read successfully: C:\Users\david\source\repos\KaddaConnect\kaddaconnect_privatekey.json
+[DEBUG] Service account parsed successfully: type, project_id, private_key_id, private_key, client_email, client_id, auth_uri, token_uri, auth_provider_x509_cert_url, client_x509_cert_url, universe_domain
+[DEBUG] Initializing Firebase with storage bucket: kaddaconnect.firebasestorage.app
+[INFO] Waiting for Firebase to initialize...
+[INFO] Starting Firebase MCP server v0.1.0 with stdio transport
+[INFO] Initializing stdio transport

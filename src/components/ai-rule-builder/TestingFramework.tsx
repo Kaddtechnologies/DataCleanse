@@ -103,7 +103,7 @@ export function TestingFramework({ rule, onTestComplete, onDeploy }: TestingFram
     return <EnhancedTestingFramework rule={rule} onTestComplete={onTestComplete} onDeploy={onDeploy} />;
   }
 
-  const accuracy = testResults ? testResults.accuracy : 0;
+  const accuracy = testResults ? testResults?.accuracy : 0;
   const passed = testResults ? testResults.passed : 0;
   const failed = testResults ? testResults.failed : 0;
   const total = testResults ? testResults.totalTests : rule.testCases?.length || 0;

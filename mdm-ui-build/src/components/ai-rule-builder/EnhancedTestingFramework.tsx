@@ -227,7 +227,7 @@ export function EnhancedTestingFramework({
       
       toast({
         title: "Tests Completed! 🎉",
-        description: `${passedCount} passed, ${failedCount} failed (${finalResult.accuracy.toFixed(1)}% accuracy)`,
+        description: `${passedCount} passed, ${failedCount} failed (${finalResult.accuracy?.toFixed(1)}% accuracy)`,
         variant: failedCount === 0 ? "default" : "destructive",
         duration: 5000,
       });
@@ -333,7 +333,7 @@ export function EnhancedTestingFramework({
   }
 
   const testCases = generateTestCases(rule);
-  const accuracy = testResults ? testResults.accuracy : 0;
+  const accuracy = testResults ? testResults?.accuracy : 0;
   const passed = testResults ? testResults.passed : 0;
   const failed = testResults ? testResults.failed : 0;
 
@@ -351,7 +351,7 @@ export function EnhancedTestingFramework({
                 variant={failed === 0 ? "default" : "destructive"}
                 className={failed === 0 ? "bg-green-500 hover:bg-green-600" : ""}
               >
-                {accuracy.toFixed(1)}% Accuracy
+                {accuracy?.toFixed(1)}% Accuracy
               </Badge>
             )}
             <div className="flex gap-2">
@@ -498,7 +498,7 @@ export function EnhancedTestingFramework({
                       </div>
                       <div className="text-center">
                         <p className="text-sm text-muted-foreground">Accuracy</p>
-                        <p className="text-lg font-semibold">{accuracy.toFixed(1)}%</p>
+                        <p className="text-lg font-semibold">{accuracy?.toFixed(1)}%</p>
                       </div>
                     </div>
                   </div>
